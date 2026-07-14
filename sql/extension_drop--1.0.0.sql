@@ -7,9 +7,6 @@
  */
 CREATE SCHEMA __extension_drop;
 
-CREATE TABLE __extension_drop.messages AS SELECT pg_catalog.current_setting('client_min_messages');
-SET client_min_messages = WARNING;
-
 CREATE FUNCTION __extension_drop.exec(
   sql text
 ) RETURNS void LANGUAGE plpgsql AS $body$
@@ -302,10 +299,6 @@ CREATE EVENT TRIGGER extension_drop
 /*
  * Drop "temporary" objects
  */
-SELECT __extension_drop.exec('SET client_min_messages = ' || current_setting)
-  FROM __extension_drop.messages 
-;
-DROP TABLE __extension_drop.messages;
 DROP FUNCTION __extension_drop.create_function(
   function_name text
   , args text

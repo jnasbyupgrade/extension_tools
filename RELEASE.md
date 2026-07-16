@@ -11,39 +11,60 @@ Releases use pgxntool's built-in `make tag`/`make dist` mechanics to produce a
 be uploaded to PGXN Manager by hand. See "Future: CI automation" below for the
 planned upgrade path.
 
-## Steps
+## Ongoing development (every PR, between releases)
+
+Keep the next release ready to cut at any time:
+
+- If a PR makes a user-facing change (bug fix, behavior change, new/changed
+  function, etc. — CI config, docs-for-contributors, and other internal-only
+  changes don't count), add an entry to `HISTORY.asc` at the repo root:
+  - If the file's top section is already headed `STABLE`, add your
+    `== <heading>` block to it.
+  - If the top section is a real version number (nothing has changed since
+    the last release yet), insert a new section above it headed `STABLE`
+    (dashes: `------`, 6 characters) with your entry.
+- If a PR changes an extension's SQL (`sql/<ext>.sql`), also maintain the
+  upgrade script from the last released version to `stable`:
+  `sql/<ext>--<last-released-version>--stable.sql`. Create it if it doesn't
+  exist yet (first SQL-touching PR since the last release). Every subsequent
+  PR that changes that extension's SQL adds whatever `ALTER ...`/
+  `CREATE OR REPLACE ...` statements are needed to bring an existing install
+  on the last released version up to your changes.
+
+This way, a release is just renaming things — see step 2 below — not writing
+a changelog or an upgrade path from scratch under time pressure.
+
+## Cutting a release
 
 1. Make sure `master` is in the state you want released, and CI is green.
 
-2. Bump the version:
+2. Rename the accumulated `STABLE` markers to the real version number:
    - Edit `META.in.json`: bump the top-level `version` field AND the matching
      `version` under `provides.<extension>.version`. Do **not** touch
      `meta-spec.version` — that's the PGXN metadata spec version, always
      `1.0.0` regardless of your distribution's version.
    - Edit `<extension>.control`: bump `default_version` to match.
-   - If maturity is changing, also update `release_status` in `META.in.json`
-     (`unstable` -> `testing` -> `stable`).
-   - Regenerate `META.json`: `rm -f META.json && make META.json`. It's a
-     derived file — never hand-edit it directly (see `META.in.json` vs
-     `META.json` in `pgxntool/CLAUDE.md`).
+   - In `HISTORY.asc`, rename the top `STABLE` heading to the new version
+     number, and its dashes line to match the new heading's length.
+   - `git mv sql/<ext>--<last-released-version>--stable.sql` to
+     `sql/<ext>--<last-released-version>--<new-version>.sql`.
+   - Run `make META.json` (no need to `rm` it first — make only rebuilds it
+     when `META.in.json` is newer). It's a derived file — never hand-edit it
+     directly (see `META.in.json` vs `META.json` in `pgxntool/CLAUDE.md`).
+   - Run `make test` as a final check before committing — this also
+     exercises the `META.json` regeneration as part of the normal build.
 
-3. Add a changelog entry in `HISTORY.asc` at the repo root (this project's
-   own file — not `pgxntool/HISTORY.asc`, which documents pgxntool itself).
-   Format: a line with the version number, a line of dashes matching its
-   length, then one or more `== <heading>` blocks with a short prose blurb
-   each. Newest version goes at the top. Follow the existing entries in this
-   file for the exact style.
+3. Commit the version bump + changelog + renamed upgrade script together in
+   one commit. Message convention used by this project:
+   `"<version>: <one-line summary>"` (e.g. `"1.0.0: Add PostgreSQL 9.3-17
+   support, promote to stable"`).
 
-4. Commit the version bump + changelog together in one commit. Message
-   convention used by this project: `"<version>: <one-line summary>"` (e.g.
-   `"1.0.0: Add PostgreSQL 9.3-17 support, promote to stable"`).
-
-5. Make sure your `origin` git remote points at the canonical upstream repo
+4. Make sure your `origin` git remote points at the canonical upstream repo
    (`Postgres-Extensions/extension_tools`, not a personal fork) —
    `make tag` pushes to whatever `origin` is, and a tag pushed to a fork does
    nothing for PGXN.
 
-6. Run `make dist`. This:
+5. Run `make dist`. This:
    - Refuses to run with uncommitted changes.
    - Creates (or verifies) a git tag matching `PGXNVERSION` — the bare version
      number, e.g. `1.0.0`, no `v` prefix, matching this project's convention
@@ -56,11 +77,18 @@ planned upgrade path.
      do this once the version has been public for a while — moving a
      published tag out from under people is disruptive.
 
-7. Upload the zip at https://manager.pgxn.org/ (log in, use the release form).
+   Before running this, check `Postgres-Extensions/pgxntool`'s open issues
+   labeled `make dist` — several `make dist` gaps found while writing this
+   doc were filed there instead of fixed by hand each release (version
+   consistency, `META.json` freshness, URL reachability, and more may
+   accumulate over time). Review whether any open issue there affects this
+   release before proceeding.
+
+6. Upload the zip at https://manager.pgxn.org/ (log in, use the release form).
    You need a registered PGXN Manager account with rights to this
    distribution.
 
-8. Verify the new version shows up at `https://pgxn.org/dist/<name>/` (can
+7. Verify the new version shows up at `https://pgxn.org/dist/<name>/` (can
    take a few minutes to index).
 
 ## Future: CI automation
@@ -69,7 +97,7 @@ Right now this is entirely manual. The `pgtap` extension (a sibling project,
 not part of this org) has a `.github/workflows/release.yml` that
 auto-publishes to PGXN on tag push, using the `pgxn/pgxn-tools` Docker image
 (`pgxn-bundle` + `pgxn-release` steps), and auto-creates a GitHub release from
-the changelog. Adopting the same pattern here would remove steps 6-7 above,
+the changelog. Adopting the same pattern here would remove steps 5-6 above,
 but requires storing PGXN Manager credentials as a GitHub Actions secret —
 deliberately deferred for this release.
 
@@ -77,11 +105,4 @@ deliberately deferred for this release.
 
 - pgxntool's own `make tag`/`make dist` create a *real* git tag, despite
   `pgxntool/README.asc` describing the result as a "branch" — that's stale
-  wording in the docs, not current behavior.
-- There's no automated check that `META.in.json`'s top-level version, its
-  `provides.<extension>.version`, and `<extension>.control`'s
-  `default_version` all agree — verify all three by hand before tagging.
-- `META.in.json`'s `resources` block (homepage/bugtracker/repository URLs)
-  should point at the actual current repo home. It had drifted to a stale
-  `decibel/extension_drop` URL (GitHub redirects it via repo-transfer, but
-  that shouldn't be relied on) until fixed as part of the 1.0.0 release prep.
+  wording in the docs, not current behavior (filed upstream to get fixed).

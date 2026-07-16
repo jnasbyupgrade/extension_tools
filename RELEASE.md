@@ -37,6 +37,10 @@ a changelog or an upgrade path from scratch under time pressure.
 ## Cutting a release
 
 1. Make sure `master` is in the state you want released, and CI is green.
+   **Caveat:** as of this writing, CI passing doesn't actually mean the test
+   suite passed — see "CI doesn't fail on test failures" below. Until that's
+   fixed, also eyeball the actual `pg_regress` output in the CI logs (or run
+   `make test` locally), not just the green checkmark.
 
 2. Rename the accumulated `STABLE` markers to the real version number:
    - Edit `META.in.json`: bump the top-level `version` field AND the matching
@@ -56,8 +60,7 @@ a changelog or an upgrade path from scratch under time pressure.
 
 3. Commit the version bump + changelog + renamed upgrade script together in
    one commit. Message convention used by this project:
-   `"<version>: <one-line summary>"` (e.g. `"1.0.0: Add PostgreSQL 9.3-17
-   support, promote to stable"`).
+   `"<version>: <one-line summary>"` (e.g. `"1.1.0: Add foo() function"`).
 
 4. Make sure your `origin` git remote points at the canonical upstream repo
    (`Postgres-Extensions/extension_tools`, not a personal fork) —
@@ -106,3 +109,13 @@ deliberately deferred for this release.
 - pgxntool's own `make tag`/`make dist` create a *real* git tag, despite
   `pgxntool/README.asc` describing the result as a "branch" — that's stale
   wording in the docs, not current behavior (filed upstream to get fixed).
+- **CI doesn't fail on test failures.** `pgxntool/base.mk` has
+  `.IGNORE: installcheck`, so `make test`/`make installcheck` always report
+  success to `make` regardless of the actual `pg_regress` result — a run
+  with every test failing still shows green in GitHub Actions. Confirmed
+  live: PRs #6 and #7 both had every `pg_regress` test fail
+  (`cat_tools.routine__parse_arg_types_text` doesn't exist in any released
+  `cat_tools`; that name only exists on cat_tools' unreleased 0.3.0 branch)
+  while every CI job reported `"conclusion":"success"`. This needs fixing
+  upstream in pgxntool, and the `cat_tools` call in `sql/extension_drop.sql`
+  needs fixing here, before this distribution can actually be released.

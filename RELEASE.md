@@ -116,6 +116,7 @@ deliberately deferred for this release.
   live: PRs #6 and #7 both had every `pg_regress` test fail
   (`cat_tools.routine__parse_arg_types_text` doesn't exist in any released
   `cat_tools`; that name only exists on cat_tools' unreleased 0.3.0 branch)
-  while every CI job reported `"conclusion":"success"`. This needs fixing
-  upstream in pgxntool, and the `cat_tools` call in `sql/extension_drop.sql`
-  needs fixing here, before this distribution can actually be released.
+  while every CI job reported `"conclusion":"success"`. Filed upstream as
+  Postgres-Extensions/pgxntool#49; the `cat_tools` call in
+  `sql/extension_drop.sql` also needs fixing here before this distribution
+  can actually be released.

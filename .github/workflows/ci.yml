@@ -12,6 +12,23 @@ jobs:
       - name: Start PostgreSQL ${{ matrix.pg }}
         run: pg-start ${{ matrix.pg }}
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Test on PostgreSQL ${{ matrix.pg }}
         run: pg-build-test
+
+  # A single stable check name for use as a required status check in branch
+  # protection. Matrix jobs produce names like "🐘 PostgreSQL 14" that change
+  # with the matrix; this aggregates them into one. It passes if every needed
+  # job succeeded or was skipped (e.g. a docs-only push with paths-ignore) and
+  # fails if any failed or were cancelled.
+  all-checks-passed:
+    needs: [test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs passed or were skipped
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more jobs failed or were cancelled"
+            exit 1
+          fi

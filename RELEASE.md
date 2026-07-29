@@ -62,17 +62,19 @@ a changelog or an upgrade path from scratch under time pressure.
    one commit. Message convention used by this project:
    `"<version>: <one-line summary>"` (e.g. `"1.1.0: Add foo() function"`).
 
-4. Make sure your `origin` git remote points at the canonical upstream repo
-   (`Postgres-Extensions/extension_tools`, not a personal fork) —
-   `make tag` pushes to whatever `origin` is, and a tag pushed to a fork does
-   nothing for PGXN.
+4. If your `origin` git remote is a personal fork rather than the canonical
+   upstream repo (`Postgres-Extensions/extension_tools`), pass
+   `PGXN_REMOTE=<remote-name>` (e.g. `PGXN_REMOTE=upstream`) to `make tag`/
+   `make dist` below — a tag pushed to a fork does nothing for PGXN.
+   `PGXN_REMOTE` defaults to `origin`.
 
-5. Run `make dist`. This:
+5. Run `make dist` (add `PGXN_REMOTE=upstream` etc. per step 4 if needed).
+   This:
    - Refuses to run with uncommitted changes.
    - Creates (or verifies) a git tag matching `PGXNVERSION` — the bare version
      number, e.g. `1.0.0`, no `v` prefix, matching this project's convention
      (check `meta.mk` if unsure what `PGXNVERSION` resolved to) — and pushes
-     it to `origin`.
+     it to `PGXN_REMOTE`.
    - Runs `git archive` at that tag into `../<dist-name>-<version>.zip` (e.g.
      `../extension_drop-1.0.0.zip`).
    - If you need to redo a release before anyone's downloaded it:
@@ -106,9 +108,6 @@ deliberately deferred for this release.
 
 ## Notes / gotchas discovered while writing this
 
-- pgxntool's own `make tag`/`make dist` create a *real* git tag, despite
-  `pgxntool/README.asc` describing the result as a "branch" — that's stale
-  wording in the docs, not current behavior (filed upstream to get fixed).
 - **CI doesn't fail on test failures.** `pgxntool/base.mk` has
   `.IGNORE: installcheck`, so `make test`/`make installcheck` always report
   success to `make` regardless of the actual `pg_regress` result — a run

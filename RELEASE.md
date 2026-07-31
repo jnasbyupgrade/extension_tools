@@ -37,10 +37,6 @@ a changelog or an upgrade path from scratch under time pressure.
 ## Cutting a release
 
 1. Make sure `master` is in the state you want released, and CI is green.
-   **Caveat:** as of this writing, CI passing doesn't actually mean the test
-   suite passed — see "CI doesn't fail on test failures" below. Until that's
-   fixed, also eyeball the actual `pg_regress` output in the CI logs (or run
-   `make test` locally), not just the green checkmark.
 
 2. Rename the accumulated `STABLE` markers to the real version number:
    - Edit `META.in.json`: bump the top-level `version` field AND the matching
@@ -106,17 +102,7 @@ deliberately deferred for this release.
 
 ## Notes / gotchas discovered while writing this
 
-- pgxntool's own `make tag`/`make dist` create a *real* git tag, despite
-  `pgxntool/README.asc` describing the result as a "branch" — that's stale
-  wording in the docs, not current behavior (filed upstream to get fixed).
-- **CI doesn't fail on test failures.** `pgxntool/base.mk` has
-  `.IGNORE: installcheck`, so `make test`/`make installcheck` always report
-  success to `make` regardless of the actual `pg_regress` result — a run
-  with every test failing still shows green in GitHub Actions. Confirmed
-  live: PRs #6 and #7 both had every `pg_regress` test fail
-  (`cat_tools.routine__parse_arg_types_text` doesn't exist in any released
-  `cat_tools`; that name only exists on cat_tools' unreleased 0.3.0 branch)
-  while every CI job reported `"conclusion":"success"`. Filed upstream as
-  Postgres-Extensions/pgxntool#49; the `cat_tools` call in
-  `sql/extension_drop.sql` also needs fixing here before this distribution
+- `sql/extension_drop.sql` calls `cat_tools.routine__parse_arg_types_text`,
+  which doesn't exist in any released `cat_tools` version (only on cat_tools'
+  unreleased 0.3.0 branch) — this needs fixing here before this distribution
   can actually be released.

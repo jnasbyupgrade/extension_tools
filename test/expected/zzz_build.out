@@ -1,4 +1,6 @@
 \set ECHO none
+NOTICE:  42710: extension "cat_tools" already exists, skipping
+LOCATION:  CreateExtension, extension.c:2011
 
 INSTALL
  
@@ -9,14 +11,36 @@ INSTALL
 
  
 
+psql:sql/extension_drop.sql:198: NOTICE:  00000: type reference extension_drop__commands.extension_name%TYPE converted to name
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
+psql:sql/extension_drop.sql:198: NOTICE:  00000: type reference extension_drop__commands.extension_name%TYPE converted to name
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
  
 
+psql:sql/extension_drop.sql:218: NOTICE:  00000: type reference extension_drop__commands.extension_name%TYPE converted to name
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
+psql:sql/extension_drop.sql:218: NOTICE:  00000: type reference extension_drop__commands.sql%TYPE converted to text
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
+psql:sql/extension_drop.sql:218: NOTICE:  00000: type reference extension_drop__commands.extension_name%TYPE converted to name
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
+psql:sql/extension_drop.sql:218: NOTICE:  00000: type reference extension_drop__commands.sql%TYPE converted to text
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
  
 
+psql:sql/extension_drop.sql:236: NOTICE:  00000: type reference extension_drop__commands.extension_name%TYPE converted to name
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
+psql:sql/extension_drop.sql:236: NOTICE:  00000: type reference extension_drop__commands.extension_name%TYPE converted to name
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
  
 
- 
-
+psql:sql/extension_drop.sql:256: NOTICE:  00000: type reference extension_drop__commands.extension_name%TYPE converted to name
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
+psql:sql/extension_drop.sql:256: NOTICE:  00000: type reference extension_drop__commands.sql%TYPE converted to text
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
+psql:sql/extension_drop.sql:256: NOTICE:  00000: type reference extension_drop__commands.extension_name%TYPE converted to name
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
+psql:sql/extension_drop.sql:256: NOTICE:  00000: type reference extension_drop__commands.sql%TYPE converted to text
+LOCATION:  LookupTypeNameExtended, parse_type.c:156
  
 
  

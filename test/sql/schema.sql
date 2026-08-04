@@ -1,8 +1,30 @@
 \set ECHO none
-\set TEST_SCHEMA _test_ed
+\set TEST_SCHEMA _Test_Ed
 \i test/pgxntool/setup.sql
 
-CREATE SCHEMA _test_ed_2;
+/*
+ * extension_drop is already installed (test/install/load.sql, committed,
+ * landing wherever the ambient search_path resolves -- public in practice)
+ * before this suite runs. This file's actual job is proving the
+ * schema-targeting/quoting pipeline works, so it drops that committed
+ * install and recreates its own copies in schemas it chooses instead. Safe
+ * to drop here: this whole file runs inside pgTAP's own rolled-back
+ * transaction, so load.sql's committed install is back in place for the
+ * next test file regardless of what happens below.
+ *
+ * :TEST_SCHEMA is mixed-case, so every reference to it MUST be
+ * identifier-quoted (:"TEST_SCHEMA", or %I via format()) -- an unquoted
+ * reference would silently fold to lowercase and test a different,
+ * unquoted schema instead of this one, without erroring. That's
+ * deliberate: it turns a missing-quote bug in the code under test into a
+ * hard failure instead of a silent pass.
+ */
+DROP EXTENSION extension_drop;
+CREATE SCHEMA :"TEST_SCHEMA";
+CREATE EXTENSION extension_drop SCHEMA :"TEST_SCHEMA";
+SET search_path = :"TEST_SCHEMA", tap, "$user";
+
+CREATE SCHEMA "_Test_Ed_2";
 
 SELECT plan(
   0
@@ -28,7 +50,7 @@ SELECT lives_ok(
   , 'Drop extension'
 );
 
-\set TEST_SCHEMA_2 _test_ed_2
+\set TEST_SCHEMA_2 _Test_Ed_2
 SELECT lives_ok(
   format( $$CREATE EXTENSION extension_drop SCHEMA %I$$, :'TEST_SCHEMA_2' )
   , 'Create extension in schema ' || :'TEST_SCHEMA_2'
@@ -44,11 +66,11 @@ SELECT lives_ok(
 SET search_path = "$user", public, tap;
 
 SELECT lives_ok(
-  $$SELECT _test_ed_2.extension_drop__update('extension_drop_test', 'moo')$$
+  format( $$SELECT %I.extension_drop__update('extension_drop_test', 'moo')$$, :'TEST_SCHEMA_2' )
   , 'extension_drop__update()'
 );
 SELECT bag_eq(
-  $$SELECT * FROM _test_ed_2.extension_drop__get('extension_drop_test')$$
+  format( $$SELECT * FROM %I.extension_drop__get('extension_drop_test')$$, :'TEST_SCHEMA_2' )
   , $$SELECT 'extension_drop_test'::name , 'moo'::text$$
   , 'Verify extension_drop__get()'
 );

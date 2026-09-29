@@ -2,7 +2,7 @@ CREATE OR REPLACE FUNCTION extension_drop__event_trigger(
 ) RETURNS event_trigger LANGUAGE plpgsql SET search_path FROM CURRENT AS
 $body$
 DECLARE
-  r record;
+  r record; -- Not extension_drop__commands: the type must not resolve before the early return
 BEGIN
   RAISE DEBUG 'extension_drop event trigger entry: tg_event %, tg_tag %', tg_event, tg_tag;
 

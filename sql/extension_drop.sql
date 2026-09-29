@@ -264,7 +264,7 @@ SELECT __extension_drop.create_function(
   , 'event_trigger LANGUAGE plpgsql'
   , $body$
 DECLARE
-  r record;
+  r record; -- Not extension_drop__commands: the type must not resolve before the early return
 BEGIN
   RAISE DEBUG 'extension_drop event trigger entry: tg_event %, tg_tag %', tg_event, tg_tag;
 

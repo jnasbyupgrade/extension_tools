@@ -15,9 +15,7 @@ SELECT plan(
   + 1 -- Create test extension as role
   + 1 -- Verify extension_drop__get()
   + 1 -- Drop owned
-  + 1 -- Verify test extension is gone
-  + 1 -- Verify test table is empty
-  + 1 -- Verify no stale registration
+  + 3 -- Verify extension is gone, table is empty, no stale registration (test/helpers/test_ext__verify_dropped.sql)
 
   + 4 -- Create and drop test extension again (test/helpers/test_ext__create_drop.sql)
 
@@ -49,15 +47,7 @@ SELECT lives_ok(
   'DROP OWNED BY extension_drop_test_owner'
   , 'Drop owned'
 );
-SELECT hasnt_extension('extension_drop_test', 'Test extension does not exist');
-SELECT is_empty(
-  $$SELECT * FROM $$ || :'TT'
-  , :'TT' || ' is empty'
-);
-SELECT is_empty(
-  format($$SELECT unnest(%I.extension_drop__sanity_check())$$, :'extension_drop_schema')
-  , 'No stale registration'
-);
+\i test/helpers/test_ext__verify_dropped.sql
 
 \i test/helpers/test_ext__create_drop.sql
 

@@ -264,9 +264,17 @@ SELECT __extension_drop.create_function(
   , 'event_trigger LANGUAGE plpgsql'
   , $body$
 DECLARE
-  r extension_drop__commands;
+  r record;
 BEGIN
   RAISE DEBUG 'extension_drop event trigger entry: tg_event %, tg_tag %', tg_event, tg_tag;
+
+  -- Most drops involve no extension; don't touch our table (or assert) for them.
+  IF NOT EXISTS(
+    SELECT 1 FROM pg_catalog.pg_event_trigger_dropped_objects() WHERE object_type = 'extension'
+  ) THEN
+    RETURN;
+  END IF;
+
   FOR r IN
     SELECT c.*
       FROM extension_drop__commands c

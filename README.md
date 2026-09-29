@@ -45,4 +45,5 @@ An event trigger (`extension_drop`, on `sql_drop`) fires whenever an
 extension is dropped -- by `DROP EXTENSION`, `DROP SCHEMA ... CASCADE` or
 `DROP OWNED BY` -- runs any SQL registered for it via
 `extension_drop__add`/`extension_drop__update`, and removes the registration
-afterward.
+afterward. Those commands fire the trigger for every drop, but it returns
+immediately unless an extension is among the dropped objects.

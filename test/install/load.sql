@@ -1,5 +1,5 @@
 \set ECHO none
--- Without this an error in this file goes undetected (pg_regress never diffs it)
+-- pg_regress never diffs this file, so make psql abort on error.
 \set ON_ERROR_STOP on
 /*
  * Committed-once installer for the test suite's one real dependency: the
@@ -85,6 +85,7 @@ SELECT
  * dropping or reinstalling it would defeat the test. Fail loudly on absence
  * or mismatch.
  */
+-- \if requires psql 10+; safe because the floor is PG12.
 \if :extension_drop_mode_existing
 DO $DO$
 DECLARE
@@ -157,7 +158,6 @@ CREATE SCHEMA :"extension_drop_test_schema";
  * explicitly first instead (CREATE EXTENSION ... CASCADE was only added in
  * PG10, though event triggers themselves exist from 9.3).
  */
--- \if needs psql 10+ (effective floor is PG12); a pre-PG10 leg would need these branches server-side
 \if :extension_drop_pg10_plus
 \else
 CREATE EXTENSION IF NOT EXISTS cat_tools;

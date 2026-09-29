@@ -25,4 +25,12 @@ BEGIN
 END
 $body$;
 
+-- ALTER EVENT TRIGGER can't change WHEN
+DROP EVENT TRIGGER extension_drop;
+CREATE EVENT TRIGGER extension_drop
+  ON sql_drop
+  WHEN tag IN( 'DROP EXTENSION', 'DROP SCHEMA', 'DROP OWNED' ) -- NOTE! This MUST be IN
+  EXECUTE PROCEDURE extension_drop__event_trigger()
+;
+
 -- vim: sw=2 ts=2 expandtab

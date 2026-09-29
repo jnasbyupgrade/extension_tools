@@ -42,6 +42,7 @@ arbitrary SQL to run later. Grant them to specific roles as needed.
 ## How it works
 
 An event trigger (`extension_drop`, on `sql_drop`) fires whenever an
-extension is dropped, runs any SQL registered for it via
+extension is dropped -- by `DROP EXTENSION`, `DROP SCHEMA ... CASCADE` or
+`DROP OWNED BY` -- runs any SQL registered for it via
 `extension_drop__add`/`extension_drop__update`, and removes the registration
 afterward.

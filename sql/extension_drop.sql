@@ -291,7 +291,8 @@ $body$
 
 CREATE EVENT TRIGGER extension_drop
   ON sql_drop
-  WHEN tag IN( 'DROP EXTENSION' ) -- NOTE! This MUST be IN
+  -- DROP SCHEMA CASCADE and DROP OWNED BY also drop extensions.
+  WHEN tag IN( 'DROP EXTENSION', 'DROP SCHEMA', 'DROP OWNED' ) -- NOTE! This MUST be IN
   EXECUTE PROCEDURE extension_drop__event_trigger()
 ;
 

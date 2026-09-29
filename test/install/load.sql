@@ -1,4 +1,6 @@
 \set ECHO none
+-- Without this an error in this file goes undetected (pg_regress never diffs it)
+\set ON_ERROR_STOP on
 /*
  * Committed-once installer for the test suite's one real dependency: the
  * extension_drop extension itself. (No test roles exist for this extension
@@ -155,6 +157,7 @@ CREATE SCHEMA :"extension_drop_test_schema";
  * explicitly first instead (CREATE EXTENSION ... CASCADE was only added in
  * PG10, though event triggers themselves exist from 9.3).
  */
+-- \if needs psql 10+ (effective floor is PG12); a pre-PG10 leg would need these branches server-side
 \if :extension_drop_pg10_plus
 \else
 CREATE EXTENSION IF NOT EXISTS cat_tools;

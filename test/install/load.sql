@@ -1,4 +1,6 @@
 \set ECHO none
+-- pg_regress never diffs this file, so make psql abort on error.
+\set ON_ERROR_STOP on
 /*
  * Committed-once installer for the test suite's one real dependency: the
  * extension_drop extension itself. (No test roles exist for this extension
@@ -83,6 +85,7 @@ SELECT
  * dropping or reinstalling it would defeat the test. Fail loudly on absence
  * or mismatch.
  */
+-- \if requires psql 10+; safe because the floor is PG12.
 \if :extension_drop_mode_existing
 DO $DO$
 DECLARE

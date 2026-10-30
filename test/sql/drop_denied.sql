@@ -63,8 +63,10 @@ SELECT lives_ok(
   END $$$q$
   , 'Capture DETAIL and HINT'
 );
--- Without USAGE the table can't be found by name ("does not exist"); in existing mode the schema is
--- public, which everyone can use, so it is "permission denied" instead.
+/*
+ * Without USAGE the table can't be found by name ("does not exist"); in existing mode the schema is
+ * public, which everyone can use, so it is "permission denied" instead.
+ */
 SELECT matches(
   current_setting('extension_drop_test.detail')
   , format(

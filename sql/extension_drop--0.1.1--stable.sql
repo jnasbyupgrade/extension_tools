@@ -24,8 +24,10 @@ BEGIN
     RETURN;
   END IF;
 
-  -- One statement touches the table, so a privilege error here is ours; registered SQL runs after the
-  -- handler so its own errors pass through untouched.
+  /*
+   * One statement touches the table, so a privilege error here is ours; registered SQL runs after the
+   * handler so its own errors pass through untouched.
+   */
   BEGIN
     WITH del AS (
       DELETE FROM extension_drop__commands c

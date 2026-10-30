@@ -47,3 +47,9 @@ extension is dropped -- by `DROP EXTENSION`, `DROP SCHEMA ... CASCADE` or
 `extension_drop__add`/`extension_drop__update`, and removes the registration
 afterward. Those commands fire the trigger for every drop, but it returns
 immediately unless an extension is among the dropped objects.
+
+Dropping an extension therefore needs access to `extension_drop__commands`
+(USAGE on its schema, SELECT and DELETE on the table), whether or not the
+extension is registered. A role without it gets an `insufficient_privilege`
+error that names the table's owner and the grants that would fix it; a
+superuser, or the role that installed `extension_drop`, always has it.

@@ -1,0 +1,23 @@
+\set ECHO none
+1..20
+ok 1 - Create non-superuser role
+ok 2 - Create schema owned by role containing a registered extension
+ok 3 - DROP SCHEMA CASCADE without USAGE on extension_drop's schema
+ok 4 - Capture DETAIL and HINT
+ok 5 - DETAIL
+ok 6 - HINT
+ok 7 - Grant USAGE on extension_drop's schema
+ok 8 - DROP SCHEMA CASCADE with USAGE but no table privileges
+ok 9 - Unregister the extension
+ok 10 - DROP SCHEMA CASCADE of an unregistered extension
+ok 11 - DROP OWNED BY
+ok 12 - Superuser drop schema
+ok 13 - No stale registration
+ok 14 - Create role
+ok 15 - Create test extension as role
+ok 16 - Demote role
+ok 17 - DROP EXTENSION by the extension's non-superuser owner
+ok 18 - Superuser drop extension
+ok 19 - No stale registration
+ok 20 - extension_drop's schema should not be reachable via search_path
+# TRANSACTION INTENTIONALLY LEFT OPEN!

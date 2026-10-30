@@ -1,5 +1,5 @@
 \set ECHO none
-1..31
+1..34
 ok 1 - Create non-superuser role
 ok 2 - Create schema owned by role containing a registered extension
 ok 3 - DROP SCHEMA CASCADE without USAGE on extension_drop's schema
@@ -24,11 +24,14 @@ ok 21 - Register harmless SQL
 ok 22 - DROP SCHEMA CASCADE with the privileges the HINT names
 ok 23 - No stale registration
 ok 24 - Registration removed
-ok 25 - Create role
-ok 26 - Create test extension as role
-ok 27 - Demote role
-ok 28 - DROP EXTENSION by the extension's non-superuser owner
-ok 29 - Superuser drop extension
-ok 30 - No stale registration
-ok 31 - extension_drop's schema should not be reachable via search_path
+ok 25 - Recreate the registered extension
+ok 26 - Move the grants from the role to a group it belongs to
+ok 27 - DROP SCHEMA CASCADE with the privileges held through a group role
+ok 28 - Create role
+ok 29 - Create test extension as role
+ok 30 - Demote role
+ok 31 - DROP EXTENSION by the extension's non-superuser owner
+ok 32 - Superuser drop extension
+ok 33 - No stale registration
+ok 34 - extension_drop's schema should not be reachable via search_path
 # TRANSACTION INTENTIONALLY LEFT OPEN!

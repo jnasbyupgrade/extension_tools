@@ -43,13 +43,15 @@ arbitrary SQL to run later. Grant them to specific roles as needed.
 
 An event trigger (`extension_drop`, on `sql_drop`) fires whenever an
 extension is dropped -- by `DROP EXTENSION`, `DROP SCHEMA ... CASCADE` or
-`DROP OWNED BY` -- runs any SQL registered for it via
-`extension_drop__add`/`extension_drop__update`, and removes the registration
-afterward. Those commands fire the trigger for every drop, but it returns
-immediately unless an extension is among the dropped objects.
+`DROP OWNED BY` -- removes its registration from `extension_drop__commands`
+and runs the SQL registered for it via
+`extension_drop__add`/`extension_drop__update`. Those commands fire the
+trigger for every drop, but it returns immediately unless an extension is
+among the dropped objects.
 
 Dropping an extension therefore needs access to `extension_drop__commands`
 (USAGE on its schema, SELECT and DELETE on the table), whether or not the
 extension is registered. A role without it gets an `insufficient_privilege`
-error that names the table's owner, the grants that would fix it and the underlying error; a
-superuser, or the role that installed `extension_drop`, always has it.
+error that quotes the underlying error and names the table's owner and the
+grants that give that table access. The registered SQL runs as the caller and
+may need further privileges.

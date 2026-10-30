@@ -21,6 +21,7 @@ SELECT plan(
   + 2 -- SELECT and DELETE, registered SQL fails with its own privilege error
   + 3 -- SELECT and DELETE, registered SQL succeeds
   + 1 -- Registration removed
+  + 3 -- The same privileges held through a group role
   + 4 -- DROP EXTENSION by a role that was a superuser when it created it
   + 2 -- Cleanup
   + 1 -- extension_drop's schema should not be on search_path (test/finish.sql)
@@ -183,6 +184,29 @@ SELECT is_empty(
 SELECT is_empty(
   format($$SELECT 1 FROM %I.extension_drop__commands WHERE extension_name = 'extension_drop_test'$$, :'extension_drop_schema')
   , 'Registration removed'
+);
+
+-- Privileges held only through a group role the caller is a member of
+SELECT lives_ok(
+  $$CREATE SCHEMA extension_drop_test_plain_schema AUTHORIZATION extension_drop_test_plain;
+    CREATE EXTENSION extension_drop_test SCHEMA extension_drop_test_plain_schema$$
+  , 'Recreate the registered extension'
+);
+SELECT lives_ok(
+  format(
+    $$SELECT %1$I.extension_drop__update('extension_drop_test', 'SELECT 1');
+      REVOKE SELECT, DELETE ON %1$I.extension_drop__commands FROM extension_drop_test_plain;
+      REVOKE USAGE ON SCHEMA %1$I FROM extension_drop_test_plain;
+      CREATE ROLE extension_drop_test_group;
+      GRANT USAGE ON SCHEMA %1$I TO extension_drop_test_group;
+      GRANT SELECT, DELETE ON %1$I.extension_drop__commands TO extension_drop_test_group;
+      GRANT extension_drop_test_group TO extension_drop_test_plain$$
+    , :'extension_drop_schema')
+  , 'Move the grants from the role to a group it belongs to'
+);
+SELECT lives_ok(
+  $q$DO $$ BEGIN SET LOCAL ROLE extension_drop_test_plain; DROP SCHEMA extension_drop_test_plain_schema CASCADE; RESET ROLE; END $$$q$
+  , 'DROP SCHEMA CASCADE with the privileges held through a group role'
 );
 
 -- ALTER EXTENSION can't change the owner, so create it as a role that is then demoted

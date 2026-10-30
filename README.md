@@ -51,5 +51,5 @@ immediately unless an extension is among the dropped objects.
 Dropping an extension therefore needs access to `extension_drop__commands`
 (USAGE on its schema, SELECT and DELETE on the table), whether or not the
 extension is registered. A role without it gets an `insufficient_privilege`
-error that names the table's owner and the grants that would fix it; a
+error that names the table's owner, the grants that would fix it and the underlying error; a
 superuser, or the role that installed `extension_drop`, always has it.

@@ -264,8 +264,10 @@ SELECT __extension_drop.create_function(
   , 'event_trigger LANGUAGE plpgsql'
   , $body$
 DECLARE
-  -- record, not extension_drop__commands: a typed variable is resolved when the function compiles, before
-  -- the early return, and a role without access to the extension's schema then fails every unrelated DROP.
+  /*
+   * record, not extension_drop__commands: a typed variable is resolved when the function compiles, before
+   * the early return, and a role without access to the extension's schema then fails every unrelated DROP.
+   */
   r record;
 BEGIN
   RAISE DEBUG 'extension_drop event trigger entry: tg_event %, tg_tag %', tg_event, tg_tag;

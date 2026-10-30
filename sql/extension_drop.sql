@@ -37,10 +37,24 @@ CREATE FUNCTION __extension_drop.create_function(
 DECLARE
   c_clean_args text := cat_tools.routine__parse_arg_types_text(args);
 
+  -- A definer function must not search pg_temp ahead of its own schema, so pin the path explicitly.
+  search_path_clause text := CASE
+    WHEN options ~* 'security\s+definer' THEN COALESCE(
+      (
+        SELECT pg_catalog.format('= %I, pg_temp', n.nspname)
+          FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
+          WHERE e.extname = 'extension_drop'
+      )
+      -- Not running as an extension script (e.g. the build smoke test)
+      , pg_catalog.format('= %I, pg_temp', pg_catalog.current_schema())
+    )
+    ELSE 'FROM CURRENT'
+  END;
+
   create_template CONSTANT text := $template$
 CREATE OR REPLACE FUNCTION %s(
 %s
-) RETURNS %s SET search_path FROM CURRENT AS
+) RETURNS %s SET search_path %s AS
 %L
 $template$
   ;
@@ -71,7 +85,8 @@ BEGIN
       create_template
       , function_name
       , args
-      , options -- TODO: Force search_path if options ~* 'definer'
+      , options
+      , search_path_clause
       , body
     ) )
   ;
@@ -256,6 +271,37 @@ $body$
 );
 
 /*
+ * REGISTERED
+ */
+/*
+ * SECURITY DEFINER so the trigger can tell whether a dropped extension is registered without the caller
+ * needing table access; reads only, never runs registered SQL. The path is pinned with pg_temp last
+ * (see create_function) so a caller's temp table can't shadow ours.
+ */
+SELECT __extension_drop.create_function(
+  'extension_drop__registered'
+  , $$
+  extension_names name[]
+$$
+  , 'name[] LANGUAGE plpgsql STABLE SECURITY DEFINER'
+  , $body$
+DECLARE
+  ret name[] := array(
+    SELECT extension_name FROM extension_drop__commands WHERE extension_name = ANY(extension_names) ORDER BY 1
+  );
+BEGIN
+  -- With nothing registered the trigger returns without its own assert, so any stray row is a stale one.
+  IF ret = '{}'::name[] THEN
+    PERFORM extension_drop__sanity_assert();
+  END IF;
+  RETURN ret;
+END
+$body$
+  , $$Returns the given extensions that have drop commands, after asserting the table is sane if there are none.$$
+  , 'public'
+);
+
+/*
  * TRIGGER FUNCTION
  */
 SELECT __extension_drop.create_function(
@@ -264,12 +310,10 @@ SELECT __extension_drop.create_function(
   , 'event_trigger LANGUAGE plpgsql'
   , $body$
 DECLARE
-  /*
-   * record, not extension_drop__commands: a typed variable is resolved when the function compiles, before
-   * the early return, and a role without access to the extension's schema then fails every unrelated DROP.
-   */
   t record;
   dropping text;
+  dropped name[];
+  registered name[];
   names text[];
   cmds text[];
   i int;
@@ -279,10 +323,24 @@ BEGIN
 
   -- Most drops involve no extension; don't touch our table (or assert) for them.
   SELECT pg_catalog.string_agg(pg_catalog.quote_ident(object_name), ', ' ORDER BY object_name)
-    INTO dropping
+      , pg_catalog.array_agg(object_name::name ORDER BY object_name)
+    INTO dropping, dropped
     FROM pg_catalog.pg_event_trigger_dropped_objects()
     WHERE object_type = 'extension';
   IF dropping IS NULL THEN
+    RETURN;
+  END IF;
+
+  /*
+   * Callers without table access can still drop unregistered extensions. Without USAGE on our schema the
+   * helper isn't found; fall through to the DELETE below for its clearer error.
+   */
+  BEGIN
+    registered := extension_drop__registered(dropped);
+  EXCEPTION WHEN undefined_function OR insufficient_privilege THEN
+    registered := NULL;
+  END;
+  IF registered = '{}'::name[] THEN
     RETURN;
   END IF;
 

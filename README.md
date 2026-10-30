@@ -25,6 +25,13 @@ arbitrary SQL to run later. Grant them to specific roles as needed.
   Look up the row (`extension_name`, `sql`) registered for `extension_name`.
   Granted to `PUBLIC` by default.
 
+- `extension_drop__registered(extension_names name[]) RETURNS name[]`
+  Returns those of `extension_names` that have registered drop commands, and
+  asserts the table is sane when there are none. `SECURITY DEFINER` (with
+  `search_path` pinned to the extension's schema, then `pg_temp`); used by
+  the event trigger so dropping an unregistered extension needs no table
+  access. Granted to `PUBLIC` by default.
+
 - `extension_drop__sanity_check(ignore name DEFAULT NULL) RETURNS name[]`
   Returns the names of extensions that have registered drop commands but no
   longer exist. Should always return an empty array; pass an extension name
@@ -49,9 +56,15 @@ and runs the SQL registered for it via
 trigger for every drop, but it returns immediately unless an extension is
 among the dropped objects.
 
-Dropping an extension therefore needs access to `extension_drop__commands`
-(USAGE on its schema, SELECT and DELETE on the table), whether or not the
-extension is registered. A role without it gets an `insufficient_privilege`
+Dropping an unregistered extension needs no access to `extension_drop__commands`;
+the trigger only asks `extension_drop__registered()` (a `SECURITY DEFINER`
+function) which of the dropped extensions are registered. Dropping a
+registered extension needs access to the table (USAGE on its schema, SELECT
+and DELETE on the table). A role without it gets an `insufficient_privilege`
 error that quotes the underlying error and names the table's owner and the
 grants that give that table access. The registered SQL runs as the caller and
 may need further privileges.
+
+A caller without USAGE on the extension's schema can't resolve
+`extension_drop__registered()`, so it gets that error even for an
+unregistered extension.

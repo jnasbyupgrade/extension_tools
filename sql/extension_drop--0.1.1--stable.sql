@@ -1,13 +1,47 @@
+/*
+ * The install script's create_function doesn't exist here, so build the helper directly; see
+ * extension_drop.sql for why it is SECURITY DEFINER with pg_temp last on its search_path.
+ */
+DO $do$
+DECLARE
+  sp text;
+BEGIN
+  SELECT pg_catalog.format('%I', n.nspname) INTO sp
+    FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
+    WHERE e.extname = 'extension_drop';
+  EXECUTE pg_catalog.format($f$
+CREATE OR REPLACE FUNCTION extension_drop__registered(
+  extension_names name[]
+) RETURNS name[] LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = %s, pg_temp AS
+$body$
+DECLARE
+  ret name[] := array(
+    SELECT extension_name FROM extension_drop__commands WHERE extension_name = ANY(extension_names) ORDER BY 1
+  );
+BEGIN
+  -- With nothing registered the trigger returns without its own assert, so any stray row is a stale one.
+  IF ret = '{}'::name[] THEN
+    PERFORM extension_drop__sanity_assert();
+  END IF;
+  RETURN ret;
+END
+$body$
+$f$, sp);
+END
+$do$;
+REVOKE ALL ON FUNCTION extension_drop__registered(name[]) FROM public;
+GRANT EXECUTE ON FUNCTION extension_drop__registered(name[]) TO public;
+COMMENT ON FUNCTION extension_drop__registered(name[]) IS
+  $$Returns the given extensions that have drop commands, after asserting the table is sane if there are none.$$;
+
 CREATE OR REPLACE FUNCTION extension_drop__event_trigger(
 ) RETURNS event_trigger LANGUAGE plpgsql SET search_path FROM CURRENT AS
 $body$
 DECLARE
-  /*
-   * record, not extension_drop__commands: a typed variable is resolved when the function compiles, before
-   * the early return, and a role without access to the extension's schema then fails every unrelated DROP.
-   */
   t record;
   dropping text;
+  dropped name[];
+  registered name[];
   names text[];
   cmds text[];
   i int;
@@ -17,10 +51,24 @@ BEGIN
 
   -- Most drops involve no extension; don't touch our table (or assert) for them.
   SELECT pg_catalog.string_agg(pg_catalog.quote_ident(object_name), ', ' ORDER BY object_name)
-    INTO dropping
+      , pg_catalog.array_agg(object_name::name ORDER BY object_name)
+    INTO dropping, dropped
     FROM pg_catalog.pg_event_trigger_dropped_objects()
     WHERE object_type = 'extension';
   IF dropping IS NULL THEN
+    RETURN;
+  END IF;
+
+  /*
+   * Callers without table access can still drop unregistered extensions. Without USAGE on our schema the
+   * helper isn't found; fall through to the DELETE below for its clearer error.
+   */
+  BEGIN
+    registered := extension_drop__registered(dropped);
+  EXCEPTION WHEN undefined_function OR insufficient_privilege THEN
+    registered := NULL;
+  END;
+  IF registered = '{}'::name[] THEN
     RETURN;
   END IF;
 

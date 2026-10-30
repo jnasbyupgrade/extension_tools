@@ -7,17 +7,9 @@
  * the state of extension_drop__commands.
  */
 SELECT plan(
-  0
-
-  + 1 -- Create non-superuser role
-  + 1 -- Grant it CREATE on the database
-  + 1 -- Non-superuser DROP SCHEMA CASCADE
-  + 1 -- Non-superuser DROP OWNED BY
-
-  + 1 -- Insert stale registration
-  + 1 -- Stale registration is present
-  + 1 -- Superuser DROP SCHEMA with stale registration
-
+  1 -- Create non-superuser role
+  + 2 -- Non-superuser DROP SCHEMA CASCADE, DROP OWNED BY
+  + 3 -- Stale registration: insert, present, superuser DROP SCHEMA
   + 1 -- extension_drop's schema should not be on search_path (test/finish.sql)
 );
 
@@ -28,16 +20,16 @@ SELECT lives_ok(
   'CREATE ROLE extension_drop_test_plain'
   , 'Create non-superuser role'
 );
-SELECT lives_ok(
-  format('GRANT CREATE ON DATABASE %I TO extension_drop_test_plain', current_database())
-  , 'Grant CREATE on database'
-);
 
+/*
+ * Schemas are created as superuser but owned by the role, so it needs no
+ * CREATE privilege on the database.
+ */
 SELECT lives_ok(
   $q$DO $$ BEGIN
+    CREATE SCHEMA extension_drop_test_plain_schema AUTHORIZATION extension_drop_test_plain
+      CREATE TABLE t(i int);
     SET LOCAL ROLE extension_drop_test_plain;
-    CREATE SCHEMA extension_drop_test_plain_schema;
-    CREATE TABLE extension_drop_test_plain_schema.t(i int);
     DROP SCHEMA extension_drop_test_plain_schema CASCADE;
     RESET ROLE;
   END $$$q$
@@ -45,9 +37,9 @@ SELECT lives_ok(
 );
 SELECT lives_ok(
   $q$DO $$ BEGIN
+    CREATE SCHEMA extension_drop_test_plain_schema AUTHORIZATION extension_drop_test_plain
+      CREATE TABLE t(i int);
     SET LOCAL ROLE extension_drop_test_plain;
-    CREATE SCHEMA extension_drop_test_plain_schema;
-    CREATE TABLE extension_drop_test_plain_schema.t(i int);
     DROP OWNED BY extension_drop_test_plain;
     RESET ROLE;
   END $$$q$

@@ -7,18 +7,10 @@
  * DROP EXTENSION fail.
  */
 SELECT plan(
-  0
-
-  + 1 -- Insert into test table
-
-  + 1 -- Create schema
-  + 1 -- Create test extension in it
-  + 1 -- Verify extension_drop__get()
-  + 1 -- Drop schema cascade
+  1 -- Insert into test table
+  + 4 -- Create schema, create extension in it, verify extension_drop__get(), drop schema cascade
   + 3 -- Verify extension is gone, table is empty, no stale registration (test/helpers/test_ext__verify_dropped.sql)
-
   + 4 -- Create and drop test extension again (test/helpers/test_ext__create_drop.sql)
-
   + 1 -- extension_drop's schema should not be on search_path (test/finish.sql)
 );
 

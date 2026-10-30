@@ -7,9 +7,8 @@
  * the state of extension_drop__commands.
  */
 SELECT plan(
-  1 -- Create non-superuser role
-  + 2 -- Non-superuser DROP SCHEMA CASCADE, DROP OWNED BY
-  + 3 -- Stale registration: insert, present, superuser DROP SCHEMA
+  3 -- Non-superuser drops
+  + 3 -- Stale registration
   + 1 -- extension_drop's schema should not be on search_path (test/finish.sql)
 );
 

@@ -7,10 +7,10 @@
  * EXTENSION fail.
  */
 SELECT plan(
-  1 -- Insert into test table
-  + 4 -- Create role, create extension as it, verify extension_drop__get(), drop owned
-  + 3 -- Verify extension is gone, table is empty, no stale registration (test/helpers/test_ext__verify_dropped.sql)
-  + 4 -- Create and drop test extension again (test/helpers/test_ext__create_drop.sql)
+  1 -- test/helpers/test_ext__insert.sql
+  + 4 -- DROP OWNED BY drops the extension
+  + 3 -- test/helpers/test_ext__verify_dropped.sql
+  + 4 -- test/helpers/test_ext__create_drop.sql
   + 1 -- extension_drop's schema should not be on search_path (test/finish.sql)
 );
 

@@ -56,15 +56,12 @@ and runs the SQL registered for it via
 trigger for every drop, but it returns immediately unless an extension is
 among the dropped objects.
 
-Dropping an unregistered extension needs no access to `extension_drop__commands`;
-the trigger only asks `extension_drop__registered()` (a `SECURITY DEFINER`
-function) which of the dropped extensions are registered. Dropping a
-registered extension needs access to the table (USAGE on its schema, SELECT
-and DELETE on the table). A role without it gets an `insufficient_privilege`
-error that quotes the underlying error and names the table's owner and the
-grants that give that table access. The registered SQL runs as the caller and
-may need further privileges.
-
-A caller without USAGE on the extension's schema can't resolve
-`extension_drop__registered()`, so it gets that error even for an
-unregistered extension.
+Dropping an unregistered extension needs only USAGE on the extension's
+schema (to resolve `extension_drop__registered()`, a `SECURITY DEFINER`
+function executable by `PUBLIC`, which the trigger asks which of the dropped
+extensions are registered); it needs no privileges on `extension_drop__commands`.
+Dropping a registered extension additionally needs SELECT and DELETE on that
+table. A role without the access gets an `insufficient_privilege` error that
+names the table, its owner and the extensions being dropped, with the
+underlying error as DETAIL and a HINT giving the grants that fix it. The
+registered SQL runs as the caller and may need further privileges.

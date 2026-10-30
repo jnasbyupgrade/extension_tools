@@ -23,6 +23,7 @@ SELECT plan(
   + 2 -- Unregistered, USAGE only: DROP SCHEMA CASCADE
   + 3 -- Unregistered, USAGE only: DROP OWNED BY
   + 5 -- Unregistered, SELECT but not DELETE
+  + 6 -- Helper not executable: falls through to the caller's DELETE
   + 4 -- Temp table shadowing extension_drop__commands
   + 6 -- Stale registration
   + 4 -- DROP EXTENSION by a role that was a superuser when it created it
@@ -33,11 +34,17 @@ SELECT plan(
 -- Hide version-specific NOTICE/WARNING text from the drops
 SET client_min_messages = ERROR;
 
-\set MSG 'permission denied to drop extension(s) extension_drop_test'
 \set DROP_SCHEMA 'DO $$ BEGIN SET LOCAL ROLE extension_drop_test_plain; DROP SCHEMA extension_drop_test_plain_schema CASCADE; RESET ROLE; END $$'
 \set DROP_OWNED 'DO $$ BEGIN SET LOCAL ROLE extension_drop_test_plain; DROP OWNED BY extension_drop_test_plain CASCADE; RESET ROLE; END $$'
 \set RECREATE 'CREATE SCHEMA extension_drop_test_plain_schema AUTHORIZATION extension_drop_test_plain; CREATE EXTENSION extension_drop_test SCHEMA extension_drop_test_plain_schema'
 \set UNREGISTER 'SELECT ' :"extension_drop_schema" '.extension_drop__remove(''extension_drop_test'')'
+
+-- The primary message names the table, its owner and the extensions being dropped
+SELECT format(
+  'permission denied for table "%s"."extension_drop__commands" (owned by role "%s"), which extension_drop needs to drop extension(s) extension_drop_test'
+  , :'extension_drop_schema'
+  , (SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid = format('%I.extension_drop__commands', :'extension_drop_schema')::regclass)
+) AS "MSG" \gset
 
 SELECT lives_ok(
   'CREATE ROLE extension_drop_test_plain'
@@ -75,9 +82,7 @@ SELECT lives_ok(
  */
 SELECT matches(
   current_setting('extension_drop_test.detail')
-  , format(
-      '^extension_drop must read and delete its registration in %s\.extension_drop__commands: (relation "extension_drop__commands" does not exist|permission denied for table extension_drop__commands)$'
-      , regexp_replace(quote_ident(:'extension_drop_schema'), '([^a-zA-Z0-9_])', '\\\1', 'g'))
+  , '^(relation "extension_drop__commands" does not exist|permission denied for table extension_drop__commands)$'
   , 'DETAIL'
 );
 SELECT is(
@@ -112,10 +117,8 @@ SELECT lives_ok(
 );
 SELECT is(
   current_setting('extension_drop_test.detail')
-  , format(
-      'extension_drop must read and delete its registration in %I.extension_drop__commands: permission denied for table extension_drop__commands'
-      , :'extension_drop_schema')
-  , 'DETAIL includes the original error'
+  , 'permission denied for table extension_drop__commands'
+  , 'DETAIL is the original error'
 );
 
 -- SELECT alone is not enough for a registered extension: the trigger deletes the registration
@@ -250,6 +253,34 @@ SELECT lives_ok(
 SELECT lives_ok(
   format('REVOKE SELECT ON %I.extension_drop__commands FROM extension_drop_test_plain', :'extension_drop_schema')
   , 'Revoke SELECT'
+);
+
+-- With EXECUTE on the helper revoked, the trigger falls through to the caller's own DELETE
+SELECT lives_ok(
+  :'RECREATE'
+  , 'Recreate the extension'
+);
+SELECT lives_ok(
+  :'UNREGISTER'
+  , 'Unregister the extension'
+);
+SELECT lives_ok(
+  format('REVOKE EXECUTE ON FUNCTION %I.extension_drop__registered(name[]) FROM PUBLIC', :'extension_drop_schema')
+  , 'Revoke EXECUTE on the helper'
+);
+SELECT throws_ok(
+  :'DROP_SCHEMA'
+  , '42501'
+  , :'MSG'
+  , 'Unregistered: DROP SCHEMA CASCADE without EXECUTE on the helper or table privileges'
+);
+SELECT lives_ok(
+  format('GRANT EXECUTE ON FUNCTION %I.extension_drop__registered(name[]) TO PUBLIC', :'extension_drop_schema')
+  , 'Restore EXECUTE on the helper'
+);
+SELECT lives_ok(
+  'DROP SCHEMA extension_drop_test_plain_schema CASCADE'
+  , 'Superuser drop schema'
 );
 
 -- A temp table named like ours must not hide the real registration from the helper

@@ -89,7 +89,7 @@ BEGIN
     GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
 
     -- Look up the table by OID path, not by name, for the same reason.
-    SELECT n.nspname, pg_catalog.format('%I.%I', n.nspname, c.relname) AS qname, pg_catalog.pg_get_userbyid(c.relowner) AS owner
+    SELECT n.nspname, c.relname, pg_catalog.format('%I.%I', n.nspname, c.relname) AS qname, pg_catalog.pg_get_userbyid(c.relowner) AS owner
       INTO t
       FROM pg_catalog.pg_extension e
         JOIN pg_catalog.pg_class c
@@ -100,10 +100,10 @@ BEGIN
       RAISE;
     END IF;
 
-    RAISE EXCEPTION 'permission denied to drop extension(s) %', dropping
+    RAISE EXCEPTION 'permission denied for table "%"."%" (owned by role "%"), which extension_drop needs to drop extension(s) %'
+        , t.nspname, t.relname, t.owner, dropping
       USING ERRCODE = 'insufficient_privilege'
-        , DETAIL = pg_catalog.format(
-            'extension_drop must read and delete its registration in %s: %s', t.qname, msg)
+        , DETAIL = msg
         , HINT = pg_catalog.format(
             'Run the drop as role %s or a superuser, or grant USAGE on schema %s and SELECT, DELETE on %s to the current role.'
             , pg_catalog.quote_ident(t.owner), pg_catalog.quote_ident(t.nspname), t.qname);

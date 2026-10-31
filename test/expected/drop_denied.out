@@ -1,5 +1,5 @@
 \set ECHO none
-1..60
+1..67
 ok 1 - Create non-superuser role
 ok 2 - Create schema owned by role containing a registered extension
 ok 3 - Registered: DROP SCHEMA CASCADE without USAGE on extension_drop's schema
@@ -41,23 +41,30 @@ ok 38 - Revoke EXECUTE on the helper
 ok 39 - Unregistered: DROP SCHEMA CASCADE without EXECUTE on the helper or table privileges
 ok 40 - Restore EXECUTE on the helper
 ok 41 - Superuser drop schema
-ok 42 - Recreate the registered extension
-ok 43 - Registered extension is still found when the caller has a temp table of the same name
-ok 44 - Unregister the extension
-ok 45 - Superuser drop schema
-ok 46 - Recreate the extension
-ok 47 - Unregister the extension
-ok 48 - Insert a stale registration
-ok 49 - Unregistered: DROP SCHEMA CASCADE with a stale registration present
-ok 50 - Repair
-ok 51 - Superuser drop schema
-ok 52 - Create role
-ok 53 - Create test extension as role
-ok 54 - Demote role
-ok 55 - DROP EXTENSION by the extension's non-superuser owner
-ok 56 - Unregister the extension
-ok 57 - Grant USAGE on extension_drop's schema
-ok 58 - Unregistered: DROP EXTENSION by the extension's non-superuser owner with USAGE but no table privileges
-ok 59 - No stale registration
-ok 60 - extension_drop's schema should not be reachable via search_path
+ok 42 - Grant USAGE and CREATE on extension_drop's schema
+ok 43 - Plant an = operator for name[] in extension_drop's schema
+ok 44 - Reset the flag
+ok 45 - Call the helper as that role
+ok 46 - The helper did not run the planted operator
+ok 47 - Remove the planted operator
+ok 48 - Revoke CREATE
+ok 49 - Recreate the registered extension
+ok 50 - Registered extension is still found when the caller has a temp table of the same name
+ok 51 - Unregister the extension
+ok 52 - Superuser drop schema
+ok 53 - Recreate the extension
+ok 54 - Unregister the extension
+ok 55 - Insert a stale registration
+ok 56 - Unregistered: DROP SCHEMA CASCADE with a stale registration present
+ok 57 - Repair
+ok 58 - Superuser drop schema
+ok 59 - Create role
+ok 60 - Create test extension as role
+ok 61 - Demote role
+ok 62 - DROP EXTENSION by the extension's non-superuser owner
+ok 63 - Unregister the extension
+ok 64 - Grant USAGE on extension_drop's schema
+ok 65 - Unregistered: DROP EXTENSION by the extension's non-superuser owner with USAGE but no table privileges
+ok 66 - No stale registration
+ok 67 - extension_drop's schema should not be reachable via search_path
 # TRANSACTION INTENTIONALLY LEFT OPEN!

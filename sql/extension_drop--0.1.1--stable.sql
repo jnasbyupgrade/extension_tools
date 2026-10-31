@@ -1,27 +1,48 @@
 /*
  * The install script's create_function doesn't exist here, so build the helper directly; see
- * extension_drop.sql for why it is SECURITY DEFINER with pg_temp last on its search_path.
+ * extension_drop.sql for why it is SECURITY DEFINER with a pg_catalog-only search_path.
  */
 DO $do$
 DECLARE
   sp text;
 BEGIN
-  SELECT pg_catalog.format('%I', n.nspname) INTO sp
+  SELECT pg_catalog.quote_ident(n.nspname) INTO sp
     FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
     WHERE e.extname = 'extension_drop';
   EXECUTE pg_catalog.format($f$
 CREATE OR REPLACE FUNCTION extension_drop__registered(
   extension_names name[]
-) RETURNS name[] LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = %s, pg_temp AS
+) RETURNS name[] LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS
 $body$
 DECLARE
   ret name[] := array(
-    SELECT extension_name FROM extension_drop__commands WHERE extension_name = ANY(extension_names) ORDER BY 1
+    SELECT c.extension_name FROM %1$s.extension_drop__commands c
+      WHERE c.extension_name = ANY(extension_names) ORDER BY 1
   );
+  bad name[];
 BEGIN
-  -- With nothing registered the trigger returns without its own assert, so any stray row is a stale one.
-  IF ret = '{}'::name[] THEN
-    PERFORM extension_drop__sanity_assert();
+  /*
+   * With nothing registered the trigger returns without reaching its own sanity assert, so any stale row is
+   * caught here. Inlined rather than calling extension_drop__sanity_assert(): that resolves names through
+   * its owner's search_path, which must not happen with definer rights.
+   */
+  IF pg_catalog.array_length(ret, 1) IS NULL THEN
+    bad := array(
+      SELECT c.extension_name FROM %1$s.extension_drop__commands c
+        WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_extension e WHERE e.extname = c.extension_name)
+    );
+    IF pg_catalog.array_length(bad, 1) IS NOT NULL THEN
+      RAISE 'unexpected drop commands'
+        USING ERRCODE = 'XD001'
+          , HINT = $$This should not happen unless someone manually inserted into "extension_drop__commands" or messed with the "extension_drop" event trigger.
+    Use SELECT extension_drop__repair() to fix this.$$
+          , DETAIL = pg_catalog.format(
+            '%%s not exist: %%s'
+            , CASE WHEN pg_catalog.array_length(bad, 1) = 1 THEN 'This extension does' ELSE 'These extensions do' END
+            , pg_catalog.array_to_string(bad, ', ')
+          )
+      ;
+    END IF;
   END IF;
   RETURN ret;
 END
@@ -50,7 +71,8 @@ BEGIN
   RAISE DEBUG 'extension_drop event trigger entry: tg_event %, tg_tag %', tg_event, tg_tag;
 
   -- Most drops involve no extension; don't touch our table (or assert) for them.
-  SELECT pg_catalog.string_agg(pg_catalog.quote_ident(object_name), ', ' ORDER BY object_name)
+  SELECT pg_catalog.string_agg(
+          pg_catalog.format('"%s"', pg_catalog.replace(object_name, '"', '""')), ', ' ORDER BY object_name)
       , pg_catalog.array_agg(object_name::name ORDER BY object_name)
     INTO dropping, dropped
     FROM pg_catalog.pg_event_trigger_dropped_objects()
@@ -100,8 +122,12 @@ BEGIN
       RAISE;
     END IF;
 
-    RAISE EXCEPTION 'permission denied for table "%"."%" (owned by role "%"), which extension_drop needs to drop extension(s) %'
-        , t.nspname, t.relname, t.owner, dropping
+    -- Names are always double-quoted (embedded quotes doubled), the same way in every part of the message.
+    RAISE EXCEPTION 'permission denied for table %.% (owned by role %), which extension_drop needs to drop extension(s) %'
+        , pg_catalog.format('"%s"', pg_catalog.replace(t.nspname, '"', '""'))
+        , pg_catalog.format('"%s"', pg_catalog.replace(t.relname, '"', '""'))
+        , pg_catalog.format('"%s"', pg_catalog.replace(t.owner, '"', '""'))
+        , dropping
       USING ERRCODE = 'insufficient_privilege'
         , DETAIL = msg
         , HINT = pg_catalog.format(

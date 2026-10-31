@@ -27,10 +27,13 @@ arbitrary SQL to run later. Grant them to specific roles as needed.
 
 - `extension_drop__registered(extension_names name[]) RETURNS name[]`
   Returns those of `extension_names` that have registered drop commands, and
-  asserts the table is sane when there are none. `SECURITY DEFINER` (with
-  `search_path` pinned to the extension's schema, then `pg_temp`); used by
+  asserts the table is sane when there are none. `SECURITY DEFINER`, with
+  `search_path = pg_catalog, pg_temp` and a schema-qualified table, so a role
+  with CREATE on the extension's schema can't make it run their code; used by
   the event trigger so dropping an unregistered extension needs no table
-  access. Granted to `PUBLIC` by default.
+  access. Granted to `PUBLIC`, so any role with USAGE on the schema can ask
+  whether a given extension name is registered, and sees the names of stale
+  registrations in an `XD001` error (never the registered SQL).
 
 - `extension_drop__sanity_check(ignore name DEFAULT NULL) RETURNS name[]`
   Returns the names of extensions that have registered drop commands but no

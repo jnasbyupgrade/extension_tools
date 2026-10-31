@@ -37,19 +37,24 @@ CREATE FUNCTION __extension_drop.create_function(
 DECLARE
   c_clean_args text := cat_tools.routine__parse_arg_types_text(args);
 
-  -- A definer function must not search pg_temp ahead of its own schema, so pin the path explicitly.
+  /*
+   * A definer function gets a path of pg_catalog and pg_temp only, so nothing a caller can create in a
+   * schema they control is ever resolved; it refers to our objects through @extension_schema@ instead.
+   */
   search_path_clause text := CASE
-    WHEN options ~* 'security\s+definer' THEN COALESCE(
-      (
-        SELECT pg_catalog.format('= %I, pg_temp', n.nspname)
-          FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
-          WHERE e.extname = 'extension_drop'
-      )
-      -- Not running as an extension script (e.g. the build smoke test)
-      , pg_catalog.format('= %I, pg_temp', pg_catalog.current_schema())
-    )
+    WHEN options ~* 'security\s+definer' THEN '= pg_catalog, pg_temp'
     ELSE 'FROM CURRENT'
   END;
+
+  ext_schema text := COALESCE(
+    (
+      SELECT pg_catalog.quote_ident(n.nspname)
+        FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
+        WHERE e.extname = 'extension_drop'
+    )
+    -- Not running as an extension script (e.g. the build smoke test)
+    , pg_catalog.quote_ident(pg_catalog.current_schema())
+  );
 
   create_template CONSTANT text := $template$
 CREATE OR REPLACE FUNCTION %s(
@@ -87,7 +92,7 @@ BEGIN
       , args
       , options
       , search_path_clause
-      , body
+      , pg_catalog.replace(body, '@extension_schema@', ext_schema)
     ) )
   ;
 
@@ -275,8 +280,8 @@ $body$
  */
 /*
  * SECURITY DEFINER so the trigger can tell whether a dropped extension is registered without the caller
- * needing table access; reads only, never runs registered SQL. The path is pinned with pg_temp last
- * (see create_function) so a caller's temp table can't shadow ours.
+ * needing table access; reads only, never runs registered SQL. A caller may have CREATE on our schema, so
+ * the body uses only pg_catalog objects and a schema-qualified table (see create_function).
  */
 SELECT __extension_drop.create_function(
   'extension_drop__registered'
@@ -287,12 +292,33 @@ $$
   , $body$
 DECLARE
   ret name[] := array(
-    SELECT extension_name FROM extension_drop__commands WHERE extension_name = ANY(extension_names) ORDER BY 1
+    SELECT c.extension_name FROM @extension_schema@.extension_drop__commands c
+      WHERE c.extension_name = ANY(extension_names) ORDER BY 1
   );
+  bad name[];
 BEGIN
-  -- With nothing registered the trigger returns without its own assert, so any stray row is a stale one.
-  IF ret = '{}'::name[] THEN
-    PERFORM extension_drop__sanity_assert();
+  /*
+   * With nothing registered the trigger returns without reaching its own sanity assert, so any stale row is
+   * caught here. Inlined rather than calling extension_drop__sanity_assert(): that resolves names through
+   * its owner's search_path, which must not happen with definer rights.
+   */
+  IF pg_catalog.array_length(ret, 1) IS NULL THEN
+    bad := array(
+      SELECT c.extension_name FROM @extension_schema@.extension_drop__commands c
+        WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_extension e WHERE e.extname = c.extension_name)
+    );
+    IF pg_catalog.array_length(bad, 1) IS NOT NULL THEN
+      RAISE 'unexpected drop commands'
+        USING ERRCODE = 'XD001'
+          , HINT = $$This should not happen unless someone manually inserted into "extension_drop__commands" or messed with the "extension_drop" event trigger.
+    Use SELECT extension_drop__repair() to fix this.$$
+          , DETAIL = pg_catalog.format(
+            '%s not exist: %s'
+            , CASE WHEN pg_catalog.array_length(bad, 1) = 1 THEN 'This extension does' ELSE 'These extensions do' END
+            , pg_catalog.array_to_string(bad, ', ')
+          )
+      ;
+    END IF;
   END IF;
   RETURN ret;
 END
@@ -322,7 +348,8 @@ BEGIN
   RAISE DEBUG 'extension_drop event trigger entry: tg_event %, tg_tag %', tg_event, tg_tag;
 
   -- Most drops involve no extension; don't touch our table (or assert) for them.
-  SELECT pg_catalog.string_agg(pg_catalog.quote_ident(object_name), ', ' ORDER BY object_name)
+  SELECT pg_catalog.string_agg(
+          pg_catalog.format('"%s"', pg_catalog.replace(object_name, '"', '""')), ', ' ORDER BY object_name)
       , pg_catalog.array_agg(object_name::name ORDER BY object_name)
     INTO dropping, dropped
     FROM pg_catalog.pg_event_trigger_dropped_objects()
@@ -372,8 +399,12 @@ BEGIN
       RAISE;
     END IF;
 
-    RAISE EXCEPTION 'permission denied for table "%"."%" (owned by role "%"), which extension_drop needs to drop extension(s) %'
-        , t.nspname, t.relname, t.owner, dropping
+    -- Names are always double-quoted (embedded quotes doubled), the same way in every part of the message.
+    RAISE EXCEPTION 'permission denied for table %.% (owned by role %), which extension_drop needs to drop extension(s) %'
+        , pg_catalog.format('"%s"', pg_catalog.replace(t.nspname, '"', '""'))
+        , pg_catalog.format('"%s"', pg_catalog.replace(t.relname, '"', '""'))
+        , pg_catalog.format('"%s"', pg_catalog.replace(t.owner, '"', '""'))
+        , dropping
       USING ERRCODE = 'insufficient_privilege'
         , DETAIL = msg
         , HINT = pg_catalog.format(

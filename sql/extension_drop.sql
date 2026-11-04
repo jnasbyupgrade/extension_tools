@@ -131,8 +131,8 @@ CREATE TABLE extension_drop__grant_queue(
 
 /*
  * ============================================================================
- * WARNING: runs as whichever role commits, not as a definer. The table has no PUBLIC privileges, so only
- * a role that can already write it (its owner) can queue a grant.
+ * Only the queue table's owner can queue a grant, because the table has no PUBLIC privileges; the
+ * function itself runs as whichever role commits, not as a definer.
  * ============================================================================
  */
 SELECT __extension_drop.create_function(

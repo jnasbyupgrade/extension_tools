@@ -196,6 +196,7 @@ SELECT lives_ok(
 );
 CREATE SCHEMA "xd grant";
 SET LOCAL extension_drop.missing_public_usage = 'grant';
+-- Terse verbosity keeps the grant-mode WARNING's LOCATION line out of the expected output
 \set VERBOSITY terse
 SELECT lives_ok(
   'CREATE EXTENSION extension_drop SCHEMA "xd grant"'
@@ -224,7 +225,7 @@ SELECT is_empty(
   $$SELECT 1 FROM "xd grant".extension_drop__grant_queue$$
   , 'grant: the queue is empty again'
 );
--- No pgTAP assertion for pg_init_privs: a row there is what makes pg_dump leave the grant out
+-- A pg_init_privs row is what makes pg_dump omit the grant, so the queued grant must not leave one
 SELECT is_empty(
   $$SELECT 1 FROM pg_init_privs WHERE classoid = 'pg_namespace'::regclass AND objoid = '"xd grant"'::regnamespace$$
   , 'grant: no pg_init_privs row for the schema'
@@ -280,7 +281,7 @@ SELECT is(
 -- Any other value is rejected; 'error' is the default behavior
 SELECT lives_ok(
   'DROP EXTENSION extension_drop'
-  , 'Drop extension_drop a third time'
+  , 'Drop extension_drop after the queued-grant guard tests'
 );
 SET LOCAL extension_drop.missing_public_usage = 'error';
 SELECT throws_ok(
@@ -346,7 +347,7 @@ CREATE TEMP TABLE xd_public_init_privs AS
   SELECT * FROM pg_init_privs WHERE classoid = 'pg_namespace'::regclass AND objoid = 'public'::regnamespace;
 SELECT lives_ok(
   'DROP EXTENSION extension_drop'
-  , 'Drop extension_drop a fourth time'
+  , 'Drop extension_drop after the public install'
 );
 SELECT lives_ok(
   'REVOKE USAGE ON SCHEMA public FROM PUBLIC'

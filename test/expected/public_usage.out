@@ -48,7 +48,7 @@ ok 35 - REVOKE in the transaction of a queued grant is not refused
 ok 36 - GRANT then REVOKE in the transaction of a queued grant is not refused
 ok 37 - Fire the deferred trigger
 ok 38 - PUBLIC has USAGE after the queued grant ran
-ok 39 - Drop extension_drop a third time
+ok 39 - Drop extension_drop after the queued-grant guard tests
 ok 40 - error: install into a schema without PUBLIC USAGE fails
 ok 41 - An invalid value is rejected
 WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
@@ -67,7 +67,7 @@ ok 45 - grant: the schema is queued by the update
 ok 46 - grant: fire the deferred trigger after an update
 ok 47 - grant: PUBLIC has USAGE after COMMIT after an update
 ok 48 - grant: no pg_init_privs row after an update
-ok 49 - Drop extension_drop a fourth time
+ok 49 - Drop extension_drop after the public install
 ok 50 - Revoke PUBLIC's USAGE on public
 WARNING:  PUBLIC lacks USAGE on schema "public": GRANT USAGE is queued for COMMIT
 ok 51 - grant: install into public

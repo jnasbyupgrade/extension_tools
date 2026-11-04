@@ -32,6 +32,62 @@ Granting USAGE to `PUBLIC` also exposes every other object in that schema
 that has `PUBLIC` privileges (functions are executable by `PUBLIC` by
 default), so be careful about what schema you install it to.
 
+## Restoring a dump
+
+To restore a dump that contains extension_drop, set
+`extension_drop.missing_public_usage` to `grant` for the restore session, or
+`CREATE EXTENSION` fails: the dump creates the schema without USAGE for
+`PUBLIC` and only grants it later. Pass it through `PGOPTIONS`, which reaches
+`pg_restore -j` workers and the reconnects of `pg_dump --create`:
+
+    PGOPTIONS='-c extension_drop.missing_public_usage=grant' pg_restore -d mydb mydb.dump
+    PGOPTIONS='-c extension_drop.missing_public_usage=grant' psql -1 -d mydb -f mydb.sql
+
+Don't set it with `ALTER DATABASE` or `ALTER ROLE`: it would stay in effect
+for ordinary installs. In a SQL session the value must be quoted
+(`SET extension_drop.missing_public_usage = 'grant'`), because `GRANT` is a
+reserved word.
+
+The values are:
+
+- unset, empty or `error`: install and update fail when `PUBLIC` lacks USAGE.
+- `grant`: install and update warn and queue the grant instead of failing.
+  The grant runs at `COMMIT`, only if `PUBLIC` still lacks USAGE by then, so
+  a restore's own `GRANT USAGE ... TO PUBLIC` is not repeated. With
+  `pg_restore -x` (or any dump without the ACL) the restore therefore ends
+  with USAGE granted to `PUBLIC`.
+- anything else fails with SQLSTATE 22023.
+
+The grant is queued rather than run in the script because a `GRANT` run by an
+extension script is recorded in `pg_init_privs`, and `pg_dump` then leaves it
+out of later dumps. The queue is the extension-owned table
+`extension_drop__grant_queue`, which `PUBLIC` cannot touch and which is not
+dumped. The `REVOKE` guard triggers treat a queued row as USAGE already
+present, so a `--single-transaction` restore isn't refused on the dump's
+`REVOKE`s before `COMMIT`; they never read the setting.
+
+`grant` mode has transaction-time limits. In one transaction, `CREATE EXTENSION`
+followed by `DROP EXTENSION` fails with "pending trigger events". A
+`SET LOCAL ROLE` still in effect at `COMMIT` runs the deferred trigger as that
+role: without USAGE on the schema the commit fails with "permission denied for
+schema", and without SELECT or DELETE on the queue table it fails with
+"permission denied for table"; either rolls the transaction back. A non-owner
+role with USAGE, SELECT and DELETE gets the warning "no privileges were granted"
+and the commit succeeds without the grant. `ALTER SCHEMA ... RENAME` in the same
+transaction fails at `COMMIT`, because the queue row stores the schema name.
+
+Setting the GUC fixes only the missing-USAGE failure. A dump with registered
+extensions can still fail with a duplicate-key `COPY` error on
+`extension_drop__commands`; see [Known issues](#known-issues).
+
+Connect directly to the server, not through a connection pooler: poolers may
+drop startup options such as `PGOPTIONS` (the setting is not applied and the
+default error returns) or refuse the connection.
+
+Untested: `PGOPTIONS` on managed services where the restoring role is not a
+superuser, `pg_dump --create` output restored with `psql -1` (it contains
+`\connect`), and `pg_restore`/`pg_dump` with `--use-set-session-authorization`.
+
 ## Functions
 
 None of these are granted to `PUBLIC` except where noted, since
@@ -131,8 +187,11 @@ unquoted, but the `sed` pattern and the `GRANT` need them quoted.
 rest.** Otherwise `CREATE EXTENSION` fails with `cannot install
 extension_drop in schema "xd"`: pg_dump writes the `GRANT` only after all
 extensions are created, and `pg_dump -x` never writes it. Installs into
-`public` are not affected. Pre-creating the schema and then restoring the whole
-dump only works without `-1`, and logs `schema "xd" already exists`.
+`public` are not affected. Setting `extension_drop.missing_public_usage`,
+described in [Restoring a dump](#restoring-a-dump), avoids the failure; use
+the recipes below for dumps and cases where the setting doesn't apply.
+Pre-creating the schema and then restoring the whole dump only works without
+`-1`, and logs `schema "xd" already exists`.
 
 Use this for `pg_restore`; it leaves out the commands data, so re-register
 what is missing afterwards, as

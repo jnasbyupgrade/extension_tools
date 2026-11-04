@@ -12,6 +12,11 @@ SELECT plan(
   + 8 -- REVOKE and DROP OWNED rejected, state unchanged
   + 5 -- guard bypassed: REVOKE and DROP OWNED refused up front, recovery
   + 7 -- reinstall; install and update refused without PUBLIC USAGE
+  + 11 -- restore mode: install queues the grant for COMMIT
+  + 7 -- the guard accepts a queued grant
+  + 3 -- error mode; invalid value
+  + 7 -- restore mode: update
+  + 6 -- restore mode: install into public
 
   + 1 -- extension_drop's schema should not be on search_path (test/finish.sql)
 );
@@ -27,6 +32,9 @@ SELECT format('cannot remove USAGE on schema %s from PUBLIC', :'dqschema') AS re
 
 -- The query returning the HINT and DETAIL of the USAGE error (55000) that sql raises
 SELECT $$SELECT hint, detail FROM pg_temp.xd_capture(%L, '55000')$$ AS capture_query
+  , 'When restoring a dump, set extension_drop.missing_public_usage to ''grant'' instead.' AS restore_hint
+\gset
+SELECT 'Run GRANT USAGE ON SCHEMA "xd no usage" TO PUBLIC (creating the schema first if needed), then retry. ' || :'restore_hint' AS install_hint
 \gset
 
 SELECT lives_ok(
@@ -138,10 +146,8 @@ SELECT throws_ok(
 );
 SELECT results_eq(
   format(:'capture_query', $q$CREATE EXTENSION extension_drop SCHEMA "xd no usage"$q$)
-  , $$VALUES (
-    'Run GRANT USAGE ON SCHEMA "xd no usage" TO PUBLIC (creating the schema first if needed), then retry.'
-    , 'extension_drop requires PUBLIC to have USAGE on the schema it is installed in.')$$
-  , 'HINT gives the exact GRANT; DETAIL explains the requirement'
+  , format($$VALUES (%L, 'extension_drop requires PUBLIC to have USAGE on the schema it is installed in.')$$, :'install_hint')
+  , 'HINT gives the exact GRANT and names the restore setting; DETAIL explains the requirement'
 );
 
 -- The 0.1.1 install script predates the requirement; the update must enforce it, and cope with any schema name
@@ -161,10 +167,11 @@ SELECT throws_ok(
 );
 SELECT results_eq(
   format(:'capture_query', $q$ALTER EXTENSION extension_drop UPDATE$q$)
-  , $$VALUES (
-    'Run GRANT USAGE ON SCHEMA "x$body$y" TO PUBLIC (creating the schema first if needed), then retry.'
-    , 'extension_drop requires PUBLIC to have USAGE on the schema it is installed in.')$$
-  , 'HINT gives the exact GRANT; DETAIL explains the requirement'
+  , format(
+    $$VALUES (%L, 'extension_drop requires PUBLIC to have USAGE on the schema it is installed in.')$$
+    , 'Run GRANT USAGE ON SCHEMA "x$body$y" TO PUBLIC (creating the schema first if needed), then retry. ' || :'restore_hint'
+  )
+  , 'HINT gives the exact GRANT and names the restore setting; DETAIL explains the requirement'
 );
 GRANT USAGE ON SCHEMA "x$body$y" TO PUBLIC;
 SELECT lives_ok(
@@ -176,6 +183,204 @@ SELECT is(
   (SELECT extversion FROM pg_extension WHERE extname = 'extension_drop')
   , (SELECT default_version FROM pg_available_extensions WHERE name = 'extension_drop')
   , 'Updated to the current version'
+);
+
+/*
+ * Restore mode. With extension_drop.missing_public_usage = 'grant', install and update queue the GRANT for
+ * COMMIT instead of failing. This file's transaction never commits, so SET CONSTRAINTS ALL IMMEDIATE fires the
+ * deferred trigger at the point COMMIT would.
+ * The real COMMIT path is therefore not covered here.
+ */
+SELECT lives_ok(
+  'DROP EXTENSION extension_drop'
+  , 'Drop extension_drop'
+);
+CREATE SCHEMA "xd grant";
+SET LOCAL extension_drop.missing_public_usage = 'grant';
+-- Terse verbosity keeps the grant-mode WARNING's LOCATION line out of the expected output
+\set VERBOSITY terse
+SELECT lives_ok(
+  'CREATE EXTENSION extension_drop SCHEMA "xd grant"'
+  , 'grant: install into a schema without PUBLIC USAGE succeeds, with a warning'
+);
+\set VERBOSITY verbose
+SELECT is(
+  has_schema_privilege('public', 'xd grant', 'USAGE')
+  , false
+  , 'grant: PUBLIC has no USAGE before COMMIT'
+);
+SELECT isnt_empty(
+  $$SELECT 1 FROM "xd grant".extension_drop__grant_queue$$
+  , 'grant: the schema is queued'
+);
+SELECT lives_ok(
+  'SET CONSTRAINTS ALL IMMEDIATE; SET CONSTRAINTS ALL DEFERRED'
+  , 'grant: fire the deferred trigger, as COMMIT does'
+);
+SELECT is(
+  has_schema_privilege('public', 'xd grant', 'USAGE')
+  , true
+  , 'grant: PUBLIC has USAGE after COMMIT'
+);
+SELECT is_empty(
+  $$SELECT 1 FROM "xd grant".extension_drop__grant_queue$$
+  , 'grant: the queue is empty again'
+);
+-- A pg_init_privs row is what makes pg_dump omit the grant, so the queued grant must not leave one
+SELECT is_empty(
+  $$SELECT 1 FROM pg_init_privs WHERE classoid = 'pg_namespace'::regclass AND objoid = '"xd grant"'::regnamespace$$
+  , 'grant: no pg_init_privs row for the schema'
+);
+SELECT table_privs_are(
+  'xd grant', 'extension_drop__grant_queue', 'public', '{}'
+  , 'PUBLIC has no privileges on the queue table'
+);
+SELECT throws_ok(
+  $$SELECT pg_temp.xd_as('extension_drop_test_grantor', 'INSERT INTO "xd grant".extension_drop__grant_queue VALUES (''xd grant'')')$$
+  , '42501'
+  , 'permission denied for table extension_drop__grant_queue'
+  , 'A role without privileges on the queue cannot queue a grant'
+);
+-- The setting is still 'grant', so this also shows the guard ignores it
+SELECT throws_ok(
+  'REVOKE USAGE ON SCHEMA "xd grant" FROM PUBLIC'
+  , '55000'
+  , 'cannot remove USAGE on schema "xd grant" from PUBLIC'
+  , 'An unqueued REVOKE is still refused'
+);
+
+-- The guard treats a queued grant as USAGE already present
+SELECT lives_ok(
+  'DROP EXTENSION extension_drop'
+  , 'Drop extension_drop again'
+);
+CREATE SCHEMA "xd grant 2";
+\set VERBOSITY terse
+SELECT lives_ok(
+  'CREATE EXTENSION extension_drop SCHEMA "xd grant 2"'
+  , 'grant: install into a second schema'
+);
+\set VERBOSITY verbose
+-- A role that can't read the queue doesn't see the pending row, so the guard refuses it
+SELECT throws_ok(
+  $$SELECT pg_temp.xd_as('extension_drop_test_grantor', 'REVOKE USAGE ON SCHEMA "xd grant 2" FROM PUBLIC')$$
+  , '55000'
+  , 'PUBLIC lacks USAGE on schema "xd grant 2"'
+  , 'A role that cannot read the queue gets the guard''s refusal, not a permission error'
+);
+SELECT lives_ok(
+  'REVOKE USAGE ON SCHEMA "xd grant 2" FROM PUBLIC'
+  , 'REVOKE in the transaction of a queued grant is not refused'
+);
+SELECT lives_ok(
+  'GRANT USAGE ON SCHEMA "xd grant 2" TO PUBLIC; REVOKE USAGE ON SCHEMA "xd grant 2" FROM PUBLIC'
+  , 'GRANT then REVOKE in the transaction of a queued grant is not refused'
+);
+SELECT lives_ok(
+  'SET CONSTRAINTS ALL IMMEDIATE; SET CONSTRAINTS ALL DEFERRED'
+  , 'Fire the deferred trigger'
+);
+SELECT is(
+  has_schema_privilege('public', 'xd grant 2', 'USAGE')
+  , true
+  , 'PUBLIC has USAGE after the queued grant ran'
+);
+
+-- Any other value is rejected; 'error' is the default behavior
+SELECT lives_ok(
+  'DROP EXTENSION extension_drop'
+  , 'Drop extension_drop after the queued-grant guard tests'
+);
+SET LOCAL extension_drop.missing_public_usage = 'error';
+SELECT throws_ok(
+  'CREATE EXTENSION extension_drop SCHEMA "xd no usage"'
+  , '55000'
+  , 'cannot install extension_drop in schema "xd no usage"'
+  , 'error: install into a schema without PUBLIC USAGE fails'
+);
+SET LOCAL extension_drop.missing_public_usage = 'skip';
+SELECT throws_ok(
+  'CREATE EXTENSION extension_drop SCHEMA "xd no usage"'
+  , '22023'
+  , 'invalid value for parameter "extension_drop.missing_public_usage": "skip"'
+  , 'An invalid value is rejected'
+);
+
+-- Update, from a 0.1.1 install in a schema without PUBLIC USAGE
+CREATE SCHEMA "xd grant upd";
+\set VERBOSITY terse
+CREATE EXTENSION extension_drop VERSION '0.1.1' SCHEMA "xd grant upd";
+\set VERBOSITY verbose
+SELECT throws_ok(
+  'ALTER EXTENSION extension_drop UPDATE'
+  , '22023'
+  , 'invalid value for parameter "extension_drop.missing_public_usage": "skip"'
+  , 'update: an invalid value is rejected'
+);
+SET LOCAL extension_drop.missing_public_usage = 'grant';
+\set VERBOSITY terse
+SELECT lives_ok(
+  'ALTER EXTENSION extension_drop UPDATE'
+  , 'grant: update of an install without PUBLIC USAGE succeeds, with a warning'
+);
+\set VERBOSITY verbose
+SELECT is(
+  has_schema_privilege('public', 'xd grant upd', 'USAGE')
+  , false
+  , 'grant: PUBLIC has no USAGE before COMMIT after an update'
+);
+SELECT isnt_empty(
+  $$SELECT 1 FROM "xd grant upd".extension_drop__grant_queue$$
+  , 'grant: the schema is queued by the update'
+);
+SELECT lives_ok(
+  'SET CONSTRAINTS ALL IMMEDIATE; SET CONSTRAINTS ALL DEFERRED'
+  , 'grant: fire the deferred trigger after an update'
+);
+SELECT is(
+  has_schema_privilege('public', 'xd grant upd', 'USAGE')
+  , true
+  , 'grant: PUBLIC has USAGE after COMMIT after an update'
+);
+SELECT is_empty(
+  $$SELECT 1 FROM pg_init_privs WHERE classoid = 'pg_namespace'::regclass AND objoid = '"xd grant upd"'::regnamespace$$
+  , 'grant: no pg_init_privs row after an update'
+);
+
+/*
+ * Installing into public after REVOKE must leave initdb's pg_init_privs row alone, which a GRANT in the
+ * script would not.
+ */
+CREATE TEMP TABLE xd_public_init_privs AS
+  SELECT * FROM pg_init_privs WHERE classoid = 'pg_namespace'::regclass AND objoid = 'public'::regnamespace
+;
+SELECT lives_ok(
+  'DROP EXTENSION extension_drop'
+  , 'Drop extension_drop after the public install'
+);
+SELECT lives_ok(
+  'REVOKE USAGE ON SCHEMA public FROM PUBLIC'
+  , 'Revoke PUBLIC''s USAGE on public'
+);
+\set VERBOSITY terse
+SELECT lives_ok(
+  'CREATE EXTENSION extension_drop SCHEMA public'
+  , 'grant: install into public'
+);
+\set VERBOSITY verbose
+SELECT lives_ok(
+  'SET CONSTRAINTS ALL IMMEDIATE; SET CONSTRAINTS ALL DEFERRED'
+  , 'grant: fire the deferred trigger for public'
+);
+SELECT is(
+  has_schema_privilege('public', 'public', 'USAGE')
+  , true
+  , 'grant: PUBLIC has USAGE on public again'
+);
+SELECT results_eq(
+  $$SELECT * FROM pg_init_privs WHERE classoid = 'pg_namespace'::regclass AND objoid = 'public'::regnamespace$$
+  , 'SELECT * FROM xd_public_init_privs'
+  , 'initdb''s pg_init_privs row for public is unchanged'
 );
 
 \i test/finish.sql

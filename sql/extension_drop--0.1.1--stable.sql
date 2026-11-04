@@ -2,24 +2,6 @@
  * Every function is re-created: every body changed, and each one's pinned search_path goes from
  * <schema>, cat_tools, pg_temp to pg_catalog, pg_temp. The calls below are the same as in extension_drop.sql.
  */
-DO $do$
-DECLARE
-  ns oid := (SELECT e.extnamespace FROM pg_catalog.pg_extension e WHERE e.extname = 'extension_drop');
-  nsname name := (SELECT n.nspname FROM pg_catalog.pg_namespace n WHERE n.oid = ns);
-  ext_schema text := pg_catalog.quote_ident(nsname);
-BEGIN
-  IF NOT pg_catalog.has_schema_privilege('public', ns, 'USAGE') THEN
-    RAISE EXCEPTION 'cannot update extension_drop in schema "%"', pg_catalog.replace(nsname, '"', '""')
-      USING ERRCODE = 'object_not_in_prerequisite_state'
-        , DETAIL = 'extension_drop requires PUBLIC to have USAGE on the schema it is installed in.'
-        , HINT = pg_catalog.format(
-          'Run GRANT USAGE ON SCHEMA %s TO PUBLIC (creating the schema first if needed), then retry.'
-          , ext_schema
-        );
-  END IF;
-END
-$do$;
-
 /*
  * NOTE: All pg_temp objects must be dropped at the end of the script!
  * Otherwise the eventual DROP CASCADE of pg_temp when the session ends will
@@ -130,6 +112,79 @@ BEGIN
   END IF;
 END
 $body$;
+
+/*
+ * GRANT QUEUE: with extension_drop.missing_public_usage = 'grant', a missing PUBLIC USAGE is not fixed by
+ * a GRANT in the install/update script (pg_init_privs would record it and later dumps would omit it).
+ * The script queues a row here instead, and the deferred constraint trigger grants at COMMIT.
+ */
+CREATE TABLE extension_drop__grant_queue(
+  schema_name name PRIMARY KEY
+);
+
+/*
+ * extension_drop__grant_queued is SECURITY INVOKER: it runs as the role that commits.
+ * Only the queue table's owner can queue a grant, because the table has no PUBLIC privileges.
+ */
+SELECT __extension_drop.create_function(
+  'extension_drop__grant_queued'
+  , ''
+  , 'trigger LANGUAGE plpgsql'
+  , $body$
+BEGIN
+  IF NOT has_schema_privilege('public', NEW.schema_name, 'USAGE') THEN
+    EXECUTE format('GRANT USAGE ON SCHEMA %I TO PUBLIC', NEW.schema_name);
+  END IF;
+  DELETE FROM @extension_schema@.extension_drop__grant_queue WHERE schema_name = NEW.schema_name;
+  RETURN NULL;
+END
+$body$
+  , $$Constraint trigger function that runs, at COMMIT, the GRANT USAGE ON SCHEMA queued by the install or update script.$$
+  , '' -- Just revoke all access
+);
+
+CREATE CONSTRAINT TRIGGER extension_drop__grant_queue
+  AFTER INSERT ON extension_drop__grant_queue
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION extension_drop__grant_queued()
+;
+
+/*
+ * Fail now rather than leave an install that can't drop extensions: the event trigger calls
+ * _extension_drop__dropping() as the dropping role, which needs USAGE on our schema.
+ */
+DO $do$
+DECLARE
+  ns oid := (SELECT e.extnamespace FROM pg_catalog.pg_extension e WHERE e.extname = 'extension_drop');
+  nsname name := (SELECT n.nspname FROM pg_catalog.pg_namespace n WHERE n.oid = ns);
+  mode text := COALESCE(pg_catalog.current_setting('extension_drop.missing_public_usage', true), '');
+BEGIN
+  IF mode NOT IN ('', 'error', 'grant') THEN
+    RAISE EXCEPTION 'invalid value for parameter "extension_drop.missing_public_usage": "%"', mode
+      USING ERRCODE = 'invalid_parameter_value'
+        , HINT = 'Valid values are "error" and "grant".'
+    ;
+  END IF;
+
+  IF NOT pg_catalog.has_schema_privilege('public', ns, 'USAGE') THEN
+    IF mode = 'grant' THEN
+      EXECUTE pg_catalog.format('INSERT INTO %I.extension_drop__grant_queue VALUES (%L) ON CONFLICT DO NOTHING', nsname, nsname);
+      RAISE WARNING 'PUBLIC lacks USAGE on schema "%": GRANT USAGE is queued for COMMIT', pg_catalog.replace(nsname, '"', '""')
+        USING DETAIL = 'extension_drop.missing_public_usage is set to "grant".'
+      ;
+    ELSE
+      RAISE EXCEPTION 'cannot update extension_drop in schema "%"', pg_catalog.replace(nsname, '"', '""')
+        USING ERRCODE = 'object_not_in_prerequisite_state'
+          , DETAIL = 'extension_drop requires PUBLIC to have USAGE on the schema it is installed in.'
+          , HINT = pg_catalog.format(
+            'Run GRANT USAGE ON SCHEMA %s TO PUBLIC (creating the schema first if needed), then retry. '
+            'When restoring a dump, set extension_drop.missing_public_usage to ''grant'' instead.'
+            , pg_catalog.quote_ident(nsname)
+          );
+    END IF;
+  END IF;
+END
+$do$;
 
 /*
  * ============================================================================
@@ -379,11 +434,22 @@ SELECT __extension_drop.create_function(
 DECLARE
   ns oid := (SELECT e.extnamespace FROM pg_extension e WHERE e.extname = 'extension_drop');
   nsname text;
+  queue oid;
   detail text := 'extension_drop requires PUBLIC to have USAGE on the schema it is installed in. DDL command: ' || tg_tag;
 BEGIN
   -- Not installed any more (e.g. DROP OWNED dropped it): nothing to protect.
   IF ns IS NOT NULL AND NOT has_schema_privilege('public', ns, 'USAGE') THEN
     nsname := (SELECT n.nspname FROM pg_namespace n WHERE n.oid = ns);
+    /*
+     * A queued grant counts as USAGE: a --single-transaction restore runs the dump's REVOKEs before COMMIT.
+     * Only the queue's owner can have queued anything, and others can't read it.
+     */
+    queue := (SELECT c.oid FROM pg_class c WHERE c.relnamespace = ns AND c.relname = 'extension_drop__grant_queue');
+    IF queue IS NOT NULL AND has_table_privilege(queue, 'SELECT') THEN
+      IF EXISTS (SELECT 1 FROM @extension_schema@.extension_drop__grant_queue WHERE schema_name = nsname) THEN
+        RETURN;
+      END IF;
+    END IF;
     IF tg_event = 'ddl_command_start' THEN
       RAISE EXCEPTION 'PUBLIC lacks USAGE on schema "%"', replace(nsname, '"', '""')
         USING ERRCODE = 'object_not_in_prerequisite_state'

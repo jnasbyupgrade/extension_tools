@@ -169,7 +169,7 @@ BEGIN
 
   IF NOT pg_catalog.has_schema_privilege('public', ns, 'USAGE') THEN
     IF mode = 'grant' THEN
-      EXECUTE pg_catalog.format('INSERT INTO %I.extension_drop__grant_queue VALUES (%L)', nsname, nsname);
+      EXECUTE pg_catalog.format('INSERT INTO %I.extension_drop__grant_queue VALUES (%L) ON CONFLICT DO NOTHING', nsname, nsname);
       RAISE WARNING 'PUBLIC lacks USAGE on schema "%": GRANT USAGE is queued for COMMIT', pg_catalog.replace(nsname, '"', '""')
         USING DETAIL = 'extension_drop.missing_public_usage is set to "grant".';
     ELSE

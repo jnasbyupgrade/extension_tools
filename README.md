@@ -64,6 +64,20 @@ dumped. The `REVOKE` guard triggers treat a queued row as USAGE already
 present, so a `--single-transaction` restore isn't refused on the dump's
 `REVOKE`s before `COMMIT`; they never read the setting.
 
+`grant` mode has transaction-time limits. In one transaction, `CREATE EXTENSION`
+followed by `DROP EXTENSION` fails with "pending trigger events". A
+`SET LOCAL ROLE` to a role without the needed privilege on the schema, still in
+effect at `COMMIT`, makes the deferred `GRANT` fail with "permission denied for
+schema" and rolls the transaction back. `ALTER SCHEMA ... RENAME` in the same
+transaction fails at `COMMIT`, because the queue row stores the schema name.
+
+Connect directly to the server, not through a connection pooler: poolers may
+reject or drop startup options such as `PGOPTIONS`, in which case the setting
+is not applied and the default error returns. Untested: `PGOPTIONS` on managed
+services where the restoring role is not a superuser, `pg_dump --create` output
+restored with `psql -1` (it contains `\connect`), and `pg_restore`/`pg_dump`
+with `--use-set-session-authorization`.
+
 ## Functions
 
 None of these are granted to `PUBLIC` except where noted, since

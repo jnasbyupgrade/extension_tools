@@ -122,8 +122,7 @@ Restoring a `pg_dump` of a database that uses extension_drop has two
 problems, tracked in
 [#56](https://github.com/Postgres-Extensions/extension_tools/issues/56). The
 commands below name the schema `xd` and the target database `newdb`; change
-them to match. They were tested with and without `pg_dump -x`, and the
-`pg_restore` ones under `-1` and `-j`.
+them to match (`xd` also appears inside the `grep` and `sed` patterns).
 
 ### Restore into a schema other than `public` fails
 
@@ -135,9 +134,10 @@ extensions are created, and `pg_dump -x` never writes it. Installs into
 restoring the whole dump only works without `-1`, and logs `schema "xd"
 already exists`.
 
-For `pg_restore` (this also leaves out the commands data that
+For `pg_restore`. This leaves out the commands data; re-register what is
+missing afterwards, as
 [the next issue](#restore-fails-with-a-duplicate-key-on-extension_drop__commands)
-needs left out):
+describes:
 
     pg_restore -l db.dump > all.list
     grep -E '^[0-9]+; [0-9]+ [0-9]+ SCHEMA - xd ' all.list > schema.list
@@ -149,11 +149,14 @@ needs left out):
 
 The last command also works with `-j 2` in place of `-1`, or with neither.
 
-For a plain SQL dump:
+For a plain SQL dump made without `--inserts`. This also leaves out the
+commands data, so re-register afterwards:
 
     psql -d newdb -c 'CREATE SCHEMA xd; GRANT USAGE ON SCHEMA xd TO PUBLIC'
     sed '/^CREATE SCHEMA xd;$/d' db.sql \
-      | awk '/^COPY .*extension_drop__commands/{s=1} !s{print} s&&/^\\\.$/{s=0}' \
+      | awk '/^COPY .*extension_drop__commands/{s=1}
+             !s{print}
+             s&&/^\\\.$/{s=0}' \
       | psql -1 -v ON_ERROR_STOP=1 -d newdb
 
 ### Restore fails with a duplicate key on `extension_drop__commands`
@@ -180,12 +183,15 @@ Leave the data out when dumping (the schema-qualified name is the table's own):
 
 Or leave it out of an existing archive:
 
-    pg_restore -l db.dump | grep -v 'TABLE DATA xd extension_drop__commands ' > rest.list
+    pg_restore -l db.dump \
+      | grep -v 'TABLE DATA xd extension_drop__commands ' > rest.list
     pg_restore -1 -L rest.list -d newdb db.dump
 
-Or out of an existing plain SQL dump:
+Or out of an existing plain SQL dump made without `--inserts`:
 
-    awk '/^COPY .*extension_drop__commands/{s=1} !s{print} s&&/^\\\.$/{s=0}' db.sql \
+    awk '/^COPY .*extension_drop__commands/{s=1}
+         !s{print}
+         s&&/^\\\.$/{s=0}' db.sql \
       | psql -1 -v ON_ERROR_STOP=1 -d newdb
 
 Then, for each registration the restored database lacks:

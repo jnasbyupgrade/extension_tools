@@ -123,6 +123,8 @@ problems, tracked in
 [#56](https://github.com/Postgres-Extensions/extension_tools/issues/56). The
 commands below name the schema `xd` and the target database `newdb`; change
 them to match (`xd` also appears inside the `grep` and `sed` patterns).
+Schema names that need quoting are untested: `pg_restore -l` prints them
+unquoted, but the `sed` pattern and the `GRANT` need them quoted.
 
 ### Restore into a schema other than `public` fails
 
@@ -133,10 +135,10 @@ extensions are created, and `pg_dump -x` never writes it. Installs into
 `public` are not affected. Pre-creating the schema and then restoring the whole
 dump only works without `-1`, and logs `schema "xd" already exists`.
 
-For `pg_restore`. This leaves out the commands data; re-register what is
+For `pg_restore` (this leaves out the commands data; re-register what is
 missing afterwards, as
 [the next issue](#restore-fails-with-a-duplicate-key-on-extension_drop__commands)
-describes:
+describes):
 
     pg_restore -l db.dump > all.list
     grep -E '^[0-9]+; [0-9]+ [0-9]+ SCHEMA - xd ' all.list > schema.list
@@ -148,8 +150,8 @@ describes:
 
 The last command also works with `-j 2` in place of `-1`, or with neither.
 
-For a plain SQL dump made without `--inserts`. This also leaves out the
-commands data, so re-register afterwards:
+For a plain SQL dump made without `--inserts` (this also leaves out the
+commands data, so re-register afterwards):
 
     psql -d newdb -c 'CREATE SCHEMA xd; GRANT USAGE ON SCHEMA xd TO PUBLIC'
     sed '/^CREATE SCHEMA xd;$/d' db.sql \
@@ -159,6 +161,10 @@ commands data, so re-register afterwards:
       | psql -1 -v ON_ERROR_STOP=1 -d newdb
 
 ### Restore fails with a duplicate key on `extension_drop__commands`
+
+For a schema other than `public`, use the section 1 recipes, which already
+leave this data out. The recipes below apply when extension_drop is in
+`public`.
 
 **Leave the data of `extension_drop__commands` out of the restore, then
 re-register what your extensions' install scripts don't register.** When an
@@ -176,22 +182,10 @@ ones to re-register:
 
     SELECT * FROM xd.extension_drop__commands;
 
-Leave the data out when dumping (the schema-qualified name is the table's own):
+Leave the data out when dumping (the pattern must be schema-qualified; an
+unqualified name matches nothing here):
 
     pg_dump -Fc --exclude-table-data='xd.extension_drop__commands' -f db.dump db
-
-Or leave it out of an existing archive:
-
-    pg_restore -l db.dump \
-      | grep -v 'TABLE DATA xd extension_drop__commands ' > rest.list
-    pg_restore -1 -L rest.list -d newdb db.dump
-
-Or out of an existing plain SQL dump made without `--inserts`:
-
-    awk '/^COPY .*extension_drop__commands/{s=1}
-         !s{print}
-         s&&/^\\\.$/{s=0}' db.sql \
-      | psql -1 -v ON_ERROR_STOP=1 -d newdb
 
 Then, for each registration the restored database lacks:
 

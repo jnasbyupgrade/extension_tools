@@ -130,9 +130,8 @@ them to match (`xd` also appears inside the `grep` and `sed` patterns).
 rest.** Otherwise `CREATE EXTENSION` fails with `cannot install
 extension_drop in schema "xd"`: pg_dump writes the `GRANT` only after all
 extensions are created, and `pg_dump -x` never writes it. Installs into
-`public` and `pg_upgrade` are not affected. Pre-creating the schema and then
-restoring the whole dump only works without `-1`, and logs `schema "xd"
-already exists`.
+`public` are not affected. Pre-creating the schema and then restoring the whole
+dump only works without `-1`, and logs `schema "xd" already exists`.
 
 For `pg_restore`. This leaves out the commands data; re-register what is
 missing afterwards, as

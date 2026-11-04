@@ -69,11 +69,11 @@ present, so a `--single-transaction` restore isn't refused on the dump's
 `grant` mode has transaction-time limits. In one transaction, `CREATE EXTENSION`
 followed by `DROP EXTENSION` fails with "pending trigger events". A
 `SET LOCAL ROLE` still in effect at `COMMIT` runs the deferred trigger as that
-role: without USAGE on the schema it fails with "permission denied for
-schema", and without DELETE on the queue table with "permission denied for
-table"; either rolls the transaction back. A role with both that doesn't own
-the schema gets the warning "no privileges were granted" and the commit
-succeeds without the grant. `ALTER SCHEMA ... RENAME` in the same
+role: without USAGE on the schema the commit fails with "permission denied for
+schema", and without SELECT or DELETE on the queue table it fails with
+"permission denied for table"; either rolls the transaction back. A non-owner
+role with USAGE, SELECT and DELETE gets the warning "no privileges were granted"
+and the commit succeeds without the grant. `ALTER SCHEMA ... RENAME` in the same
 transaction fails at `COMMIT`, because the queue row stores the schema name.
 
 Setting the GUC fixes only the missing-USAGE failure. A dump with registered

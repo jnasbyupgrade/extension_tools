@@ -115,3 +115,79 @@ Dropping an extension, registered or not, needs no privileges on
 `extension_drop__claim()`, which deletes the registration with its owner's
 rights. The SQL itself runs as the dropping role, which may need further
 privileges. A stale registration still fails the drop with `XD001`.
+
+## Known issues
+
+Restoring a `pg_dump` of a database that uses extension_drop has two
+problems, tracked in
+[#56](https://github.com/Postgres-Extensions/extension_tools/issues/56). The
+commands below name the schema `xd` and the target database `newdb`; change
+them to match. They were tested with and without `pg_dump -x`, and the
+`pg_restore` ones under `-1` and `-j`.
+
+### Restore into a schema other than `public` fails
+
+**Create the schema and grant `USAGE` to `PUBLIC` before restoring the
+rest.** Otherwise `CREATE EXTENSION` fails with `cannot install
+extension_drop in schema "xd"`: pg_dump writes the `GRANT` only after all
+extensions are created, and `pg_dump -x` never writes it. Installs into
+`public` and `pg_upgrade` are not affected. Pre-creating the schema and then
+restoring the whole dump only works without `-1`, and logs `schema "xd"
+already exists`.
+
+For `pg_restore` (this also leaves out the commands data that
+[the next issue](#restore-fails-with-a-duplicate-key-on-extension_drop__commands)
+needs left out):
+
+    pg_restore -l db.dump > all.list
+    grep -E '^[0-9]+; [0-9]+ [0-9]+ SCHEMA - xd ' all.list > schema.list
+    grep -v -E '^[0-9]+; [0-9]+ [0-9]+ SCHEMA - xd |TABLE DATA xd extension_drop__commands ' \
+      all.list > rest.list
+    pg_restore -1 -L schema.list -d newdb db.dump
+    psql -d newdb -c 'GRANT USAGE ON SCHEMA xd TO PUBLIC'
+    pg_restore -1 -L rest.list -d newdb db.dump
+
+The last command also works with `-j 2` in place of `-1`, or with neither.
+
+For a plain SQL dump:
+
+    psql -d newdb -c 'CREATE SCHEMA xd; GRANT USAGE ON SCHEMA xd TO PUBLIC'
+    sed '/^CREATE SCHEMA xd;$/d' db.sql \
+      | awk '/^COPY .*extension_drop__commands/{s=1} !s{print} s&&/^\\\.$/{s=0}' \
+      | psql -1 -v ON_ERROR_STOP=1 -d newdb
+
+### Restore fails with a duplicate key on `extension_drop__commands`
+
+**Leave the data of `extension_drop__commands` out of the restore, then
+re-register what your extensions' install scripts don't register.** When an
+extension registers drop SQL in its install script, `CREATE EXTENSION`
+re-registers it during the restore and the dump's `COPY` then inserts the same
+row, failing with `duplicate key value violates unique constraint
+"extension_drop__commands_pkey"`. The failed `COPY` inserts none of its rows,
+so a restore that continues past it (`psql -f`, `pg_restore` without `-1`, with
+or without `-j`) also loses registrations made by direct
+`extension_drop__add()` calls. A `-1` restore, or `psql -1`, aborts and
+restores nothing.
+
+List the registrations in the source database before dumping, to know which
+ones to re-register:
+
+    SELECT * FROM xd.extension_drop__commands;
+
+Leave the data out when dumping (the schema-qualified name is the table's own):
+
+    pg_dump -Fc --exclude-table-data='xd.extension_drop__commands' -f db.dump db
+
+Or leave it out of an existing archive:
+
+    pg_restore -l db.dump | grep -v 'TABLE DATA xd extension_drop__commands ' > rest.list
+    pg_restore -1 -L rest.list -d newdb db.dump
+
+Or out of an existing plain SQL dump:
+
+    awk '/^COPY .*extension_drop__commands/{s=1} !s{print} s&&/^\\\.$/{s=0}' db.sql \
+      | psql -1 -v ON_ERROR_STOP=1 -d newdb
+
+Then, for each registration the restored database lacks:
+
+    SELECT xd.extension_drop__add('my_extension', 'SELECT 1');

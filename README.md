@@ -135,10 +135,10 @@ extensions are created, and `pg_dump -x` never writes it. Installs into
 `public` are not affected. Pre-creating the schema and then restoring the whole
 dump only works without `-1`, and logs `schema "xd" already exists`.
 
-For `pg_restore` (this leaves out the commands data; re-register what is
-missing afterwards, as
+Use this for `pg_restore`; it leaves out the commands data, so re-register
+what is missing afterwards, as
 [the next issue](#restore-fails-with-a-duplicate-key-on-extension_drop__commands)
-describes):
+describes:
 
     pg_restore -l db.dump > all.list
     grep -E '^[0-9]+; [0-9]+ [0-9]+ SCHEMA - xd ' all.list > schema.list
@@ -150,8 +150,8 @@ describes):
 
 The last command also works with `-j 2` in place of `-1`, or with neither.
 
-For a plain SQL dump made without `--inserts` (this also leaves out the
-commands data, so re-register afterwards):
+Use this for a plain SQL dump made without `--inserts`; it also leaves out
+the commands data, so re-register afterwards:
 
     psql -d newdb -c 'CREATE SCHEMA xd; GRANT USAGE ON SCHEMA xd TO PUBLIC'
     sed '/^CREATE SCHEMA xd;$/d' db.sql \
@@ -183,7 +183,7 @@ ones to re-register:
     SELECT * FROM xd.extension_drop__commands;
 
 Leave the data out when dumping (the pattern must be schema-qualified; an
-unqualified name matches nothing here):
+unqualified name silently excludes nothing):
 
     pg_dump -Fc --exclude-table-data='xd.extension_drop__commands' -f db.dump db
 

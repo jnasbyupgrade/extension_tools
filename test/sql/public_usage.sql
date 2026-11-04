@@ -189,7 +189,7 @@ SELECT is(
  * Restore mode. With extension_drop.missing_public_usage = 'grant', install and update queue the GRANT for
  * COMMIT instead of failing. This file's transaction never commits, so SET CONSTRAINTS ALL IMMEDIATE fires the
  * deferred trigger at the point COMMIT would.
- * pg_regress cannot COMMIT, so the real COMMIT path is not covered by this suite.
+ * The real COMMIT path is not covered by this suite, which never commits.
  */
 SELECT lives_ok(
   'DROP EXTENSION extension_drop'

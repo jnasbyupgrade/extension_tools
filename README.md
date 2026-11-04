@@ -72,11 +72,12 @@ schema" and rolls the transaction back. `ALTER SCHEMA ... RENAME` in the same
 transaction fails at `COMMIT`, because the queue row stores the schema name.
 
 Connect directly to the server, not through a connection pooler: poolers may
-reject or drop startup options such as `PGOPTIONS`, in which case the setting
-is not applied and the default error returns. Untested: `PGOPTIONS` on managed
-services where the restoring role is not a superuser, `pg_dump --create` output
-restored with `psql -1` (it contains `\connect`), and `pg_restore`/`pg_dump`
-with `--use-set-session-authorization`.
+drop startup options such as `PGOPTIONS` (the setting is not applied and the
+default error returns) or refuse the connection.
+
+Untested: `PGOPTIONS` on managed services where the restoring role is not a
+superuser, `pg_dump --create` output restored with `psql -1` (it contains
+`\connect`), and `pg_restore`/`pg_dump` with `--use-set-session-authorization`.
 
 ## Functions
 

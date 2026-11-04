@@ -273,6 +273,7 @@ SELECT bag_eq(
   , $$VALUES ('extension_drop__sanity_check', false), ('extension_drop__sanity_assert', false), ('extension_drop__repair', false)
     , ('extension_drop__get', false), ('extension_drop__add', false), ('extension_drop__remove', false)
     , ('extension_drop__update', false), ('extension_drop__event_trigger', false), ('extension_drop__usage_guard', false)
+    , ('extension_drop__grant_queued', false)
     , ('extension_drop__claim', true)$$
   , 'extension_drop''s member functions are exactly these, and only extension_drop__claim is SECURITY DEFINER'
 );

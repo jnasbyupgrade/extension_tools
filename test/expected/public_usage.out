@@ -1,5 +1,5 @@
 \set ECHO none
-1..22
+1..55
 ok 1 - Create role
 ok 2 - REVOKE USAGE ON SCHEMA ... FROM PUBLIC is rejected
 ok 3 - PUBLIC still has USAGE
@@ -16,7 +16,7 @@ ok 13 - DROP OWNED reports the missing USAGE
 ok 14 - The GRANT in the HINT recovers
 ok 15 - Drop extension_drop
 ok 16 - Install into a schema without PUBLIC USAGE fails
-ok 17 - HINT gives the exact GRANT; DETAIL explains the requirement
+ok 17 - HINT gives the exact GRANT and names the restore setting; DETAIL explains the requirement
 WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
 WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
 WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
@@ -26,8 +26,53 @@ WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types
 WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
 WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
 ok 18 - Update of an install without PUBLIC USAGE fails
-ok 19 - HINT gives the exact GRANT; DETAIL explains the requirement
+ok 19 - HINT gives the exact GRANT and names the restore setting; DETAIL explains the requirement
 ok 20 - Update succeeds once PUBLIC has USAGE, in a schema named x$body$y
 ok 21 - Updated to the current version
-ok 22 - extension_drop's schema should not be reachable via search_path
+ok 22 - Drop extension_drop
+WARNING:  PUBLIC lacks USAGE on schema "xd grant": GRANT USAGE is queued for COMMIT
+ok 23 - grant: install into a schema without PUBLIC USAGE succeeds, with a warning
+ok 24 - grant: PUBLIC has no USAGE before COMMIT
+ok 25 - grant: the schema is queued
+ok 26 - grant: fire the deferred trigger, as COMMIT does
+ok 27 - grant: PUBLIC has USAGE after COMMIT
+ok 28 - grant: the queue is empty again
+ok 29 - grant: no pg_init_privs row for the schema
+ok 30 - PUBLIC has no privileges on the queue table
+ok 31 - A role without privileges on the queue cannot queue a grant
+ok 32 - An unqueued REVOKE is still refused
+ok 33 - Drop extension_drop again
+WARNING:  PUBLIC lacks USAGE on schema "xd grant 2": GRANT USAGE is queued for COMMIT
+ok 34 - grant: install into a second schema
+ok 35 - REVOKE in the transaction of a queued grant is not refused
+ok 36 - GRANT then REVOKE in the transaction of a queued grant is not refused
+ok 37 - Fire the deferred trigger
+ok 38 - PUBLIC has USAGE after the queued grant ran
+ok 39 - Drop extension_drop a third time
+ok 40 - error: install into a schema without PUBLIC USAGE fails
+ok 41 - An invalid value is rejected
+WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
+WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
+WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
+WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
+WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
+WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
+WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
+WARNING:  function__arg_types_text() is deprecated, use routine__parse_arg_types_text instead
+ok 42 - update: an invalid value is rejected
+WARNING:  PUBLIC lacks USAGE on schema "xd grant upd": GRANT USAGE is queued for COMMIT
+ok 43 - grant: update of an install without PUBLIC USAGE succeeds, with a warning
+ok 44 - grant: PUBLIC has no USAGE before COMMIT after an update
+ok 45 - grant: the schema is queued by the update
+ok 46 - grant: fire the deferred trigger after an update
+ok 47 - grant: PUBLIC has USAGE after COMMIT after an update
+ok 48 - grant: no pg_init_privs row after an update
+ok 49 - Drop extension_drop a fourth time
+ok 50 - Revoke PUBLIC's USAGE on public
+WARNING:  PUBLIC lacks USAGE on schema "public": GRANT USAGE is queued for COMMIT
+ok 51 - grant: install into public
+ok 52 - grant: fire the deferred trigger for public
+ok 53 - grant: PUBLIC has USAGE on public again
+ok 54 - initdb's pg_init_privs row for public is unchanged
+ok 55 - extension_drop's schema should not be reachable via search_path
 # TRANSACTION INTENTIONALLY LEFT OPEN!

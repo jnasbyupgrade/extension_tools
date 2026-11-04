@@ -30,6 +30,40 @@ Granting USAGE to `PUBLIC` also exposes every other object in that schema
 that has `PUBLIC` privileges (functions are executable by `PUBLIC` by
 default), so be careful about what schema you install it to.
 
+## Restoring a dump
+
+To restore a dump that contains extension_drop, set
+`extension_drop.missing_public_usage` to `grant` for the restore session, or
+`CREATE EXTENSION` fails: the dump creates the schema without USAGE for
+`PUBLIC` and only grants it later. Pass it through `PGOPTIONS`, which reaches
+`pg_restore -j` workers and the reconnects of `pg_dump --create`:
+
+    PGOPTIONS='-c extension_drop.missing_public_usage=grant' pg_restore -d mydb mydb.dump
+    PGOPTIONS='-c extension_drop.missing_public_usage=grant' psql -1 -d mydb -f mydb.sql
+
+Don't set it with `ALTER DATABASE` or `ALTER ROLE`: it would stay in effect
+for ordinary installs. In a SQL session the value must be quoted
+(`SET extension_drop.missing_public_usage = 'grant'`), because `GRANT` is a
+reserved word.
+
+The values are:
+
+- unset, empty or `error`: install and update fail when `PUBLIC` lacks USAGE.
+- `grant`: install and update warn and queue the grant instead of failing.
+  The grant runs at `COMMIT`, only if `PUBLIC` still lacks USAGE by then, so
+  a restore's own `GRANT USAGE ... TO PUBLIC` is not repeated. With
+  `pg_restore -x` (or any dump without the ACL) the restore therefore ends
+  with USAGE granted to `PUBLIC`.
+- anything else fails with SQLSTATE 22023.
+
+The grant is queued rather than run in the script because a `GRANT` run by an
+extension script is recorded in `pg_init_privs`, and `pg_dump` then leaves it
+out of later dumps. The queue is the extension-owned table
+`extension_drop__grant_queue`, which `PUBLIC` cannot touch and which is not
+dumped. The `REVOKE` guard triggers treat a queued row as USAGE already
+present, so a `--single-transaction` restore isn't refused on the dump's
+`REVOKE`s before `COMMIT`; they never read the setting.
+
 ## Functions
 
 None of these are granted to `PUBLIC` except where noted, since

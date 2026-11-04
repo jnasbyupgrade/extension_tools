@@ -123,10 +123,8 @@ CREATE TABLE extension_drop__grant_queue(
 );
 
 /*
- * ============================================================================
- * Only the queue table's owner can queue a grant, because the table has no PUBLIC privileges; the
- * function itself runs as whichever role commits, not as a definer.
- * ============================================================================
+ * extension_drop__grant_queued is SECURITY INVOKER: it runs as the role that commits.
+ * Only the queue table's owner can queue a grant, because the table has no PUBLIC privileges.
  */
 SELECT __extension_drop.create_function(
   'extension_drop__grant_queued'

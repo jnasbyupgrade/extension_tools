@@ -13,7 +13,7 @@ SELECT plan(
   + 5 -- guard bypassed: REVOKE and DROP OWNED refused up front, recovery
   + 7 -- reinstall; install and update refused without PUBLIC USAGE
   + 11 -- restore mode: install queues the grant for COMMIT
-  + 6 -- the guard accepts a queued grant
+  + 7 -- the guard accepts a queued grant
   + 3 -- error mode; invalid value
   + 7 -- restore mode: update
   + 6 -- restore mode: install into public
@@ -189,7 +189,7 @@ SELECT is(
  * Restore mode. With extension_drop.missing_public_usage = 'grant', install and update queue the GRANT for
  * COMMIT instead of failing. This file's transaction never commits, so SET CONSTRAINTS ALL IMMEDIATE fires the
  * deferred trigger at the point COMMIT would.
- * The real COMMIT path is not covered by this suite, which never commits.
+ * The real COMMIT path is therefore not covered here.
  */
 SELECT lives_ok(
   'DROP EXTENSION extension_drop'
@@ -261,6 +261,13 @@ SELECT lives_ok(
   , 'grant: install into a second schema'
 );
 \set VERBOSITY verbose
+-- A role that can't read the queue doesn't see the pending row, so the guard refuses it
+SELECT throws_ok(
+  $$SELECT pg_temp.xd_as('extension_drop_test_grantor', 'REVOKE USAGE ON SCHEMA "xd grant 2" FROM PUBLIC')$$
+  , '55000'
+  , 'PUBLIC lacks USAGE on schema "xd grant 2"'
+  , 'A role that cannot read the queue gets the guard''s refusal, not a permission error'
+);
 SELECT lives_ok(
   'REVOKE USAGE ON SCHEMA "xd grant 2" FROM PUBLIC'
   , 'REVOKE in the transaction of a queued grant is not refused'

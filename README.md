@@ -68,10 +68,17 @@ present, so a `--single-transaction` restore isn't refused on the dump's
 
 `grant` mode has transaction-time limits. In one transaction, `CREATE EXTENSION`
 followed by `DROP EXTENSION` fails with "pending trigger events". A
-`SET LOCAL ROLE` to a role without the needed privilege on the schema, still in
-effect at `COMMIT`, makes the deferred `GRANT` fail with "permission denied for
-schema" and rolls the transaction back. `ALTER SCHEMA ... RENAME` in the same
+`SET LOCAL ROLE` still in effect at `COMMIT` runs the deferred trigger as that
+role: without USAGE on the schema it fails with "permission denied for
+schema", and without DELETE on the queue table with "permission denied for
+table"; either rolls the transaction back. A role with both that doesn't own
+the schema gets the warning "no privileges were granted" and the commit
+succeeds without the grant. `ALTER SCHEMA ... RENAME` in the same
 transaction fails at `COMMIT`, because the queue row stores the schema name.
+
+Setting the GUC fixes only the missing-USAGE failure. A dump with registered
+extensions can still fail with a duplicate-key `COPY` error on
+`extension_drop__commands`; see [Known issues](#known-issues).
 
 Connect directly to the server, not through a connection pooler: poolers may
 drop startup options such as `PGOPTIONS` (the setting is not applied and the
@@ -180,8 +187,11 @@ unquoted, but the `sed` pattern and the `GRANT` need them quoted.
 rest.** Otherwise `CREATE EXTENSION` fails with `cannot install
 extension_drop in schema "xd"`: pg_dump writes the `GRANT` only after all
 extensions are created, and `pg_dump -x` never writes it. Installs into
-`public` are not affected. Pre-creating the schema and then restoring the whole
-dump only works without `-1`, and logs `schema "xd" already exists`.
+`public` are not affected. Setting `extension_drop.missing_public_usage`,
+described in [Restoring a dump](#restoring-a-dump), avoids the failure; use
+the recipes below for dumps and cases where the setting doesn't apply.
+Pre-creating the schema and then restoring the whole dump only works without
+`-1`, and logs `schema "xd" already exists`.
 
 Use this for `pg_restore`; it leaves out the commands data, so re-register
 what is missing afterwards, as
